@@ -13,9 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "IMO Recharge — Powered by Kamal",
   description:
-    "Recharge your IMO account quickly and securely. Enter your Profile ID, select a recharge package, and pay securely via Cashfree.",
+    "Recharge your IMO account quickly and securely. Enter your IMO ID, pick a package, and pay securely by UPI.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

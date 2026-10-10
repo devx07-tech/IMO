@@ -8,8 +8,13 @@ const createOrderSchema = z.object({
   imoProfileId: z.string().regex(/^\d{6,15}$/, "Enter a valid Profile ID."),
   packageId: z.string().uuid(),
   quantity: z.number().int().min(1).max(10),
-  customerPhone: z.string().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number."),
+  customerPhone: z
+    .string()
+    .regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number.")
+    .optional(),
 });
+
+const GATEWAY_PLACEHOLDER_PHONE = "9999999999";
 
 export async function POST(request: NextRequest) {
   const parsed = createOrderSchema.safeParse(await request.json().catch(() => null));
@@ -47,7 +52,8 @@ export async function POST(request: NextRequest) {
       orderId: orderNumber,
       amount,
       customerId: imoProfileId,
-      customerPhone,
+      // Cashfree requires a phone; the combined input may only hold an IMO ID.
+      customerPhone: customerPhone ?? GATEWAY_PLACEHOLDER_PHONE,
       returnUrl: `${siteUrl}/?order=${orderNumber}`,
     });
   } catch (err) {

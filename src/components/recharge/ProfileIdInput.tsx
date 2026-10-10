@@ -17,7 +17,7 @@ export function ProfileIdInput({ value, onChange, error }: ProfileIdInputProps) 
     <div>
       <div className="mb-1.5 flex items-center gap-1.5">
         <label htmlFor="profile-id" className="text-sm font-medium text-foreground">
-          IMO Profile ID
+          IMO ID / Mobile Number
         </label>
         <button
           type="button"
@@ -27,7 +27,7 @@ export function ProfileIdInput({ value, onChange, error }: ProfileIdInputProps) 
           className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <HelpCircle className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">What is my Profile ID?</span>
+          <span className="sr-only">What is my IMO ID?</span>
         </button>
       </div>
 
@@ -37,7 +37,7 @@ export function ProfileIdInput({ value, onChange, error }: ProfileIdInputProps) 
         type="text"
         inputMode="numeric"
         autoComplete="off"
-        placeholder="Enter your Profile ID"
+        placeholder="Enter IMO ID or mobile number"
         value={value}
         onChange={(e) => onChange(e.target.value.replace(/[^\d]/g, ""))}
         aria-invalid={Boolean(error)}
@@ -55,7 +55,7 @@ export function ProfileIdInput({ value, onChange, error }: ProfileIdInputProps) 
           id="profile-id-help"
           className="mt-2 rounded-input bg-accent-soft px-3 py-2 text-xs text-foreground/80"
         >
-          You can find your Profile ID inside your IMO profile.
+          Enter your IMO ID, or the mobile number linked to your IMO account.
         </p>
       )}
 
@@ -65,7 +65,7 @@ export function ProfileIdInput({ value, onChange, error }: ProfileIdInputProps) 
         </p>
       ) : (
         <p id="profile-id-helper" className="mt-1.5 text-xs text-muted">
-          Recharge will be credited to this profile only.
+          Recharge will be credited to this account only.
         </p>
       )}
     </div>

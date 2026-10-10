@@ -10,15 +10,14 @@ interface TransactionLookupProps {
 }
 
 export function TransactionLookup({ highlightOrder }: TransactionLookupProps) {
-  const [profileId, setProfileId] = useState(highlightOrder?.profileId ?? "");
   const [orderId, setOrderId] = useState(highlightOrder?.id ?? "");
   const [result, setResult] = useState<RechargeOrder | "not_found" | null>(highlightOrder);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleCheck = async () => {
-    if (!profileId.trim() || !orderId.trim()) {
-      setError("Enter both your Profile ID and Order ID to check status.");
+    if (!orderId.trim()) {
+      setError("Enter your Order ID to check status.");
       setResult(null);
       return;
     }
@@ -26,10 +25,7 @@ export function TransactionLookup({ highlightOrder }: TransactionLookupProps) {
     setLoading(true);
 
     try {
-      const params = new URLSearchParams({
-        profileId: profileId.trim(),
-        orderId: orderId.trim(),
-      });
+      const params = new URLSearchParams({ orderId: orderId.trim() });
       const res = await fetch(`/api/orders/lookup?${params.toString()}`);
       const body = await res.json();
 
@@ -60,18 +56,10 @@ export function TransactionLookup({ highlightOrder }: TransactionLookupProps) {
     <section id="transaction-history" className="rounded-card bg-surface p-5 shadow-card sm:p-6">
       <h2 className="text-base font-semibold text-foreground">Transaction History</h2>
       <p className="mt-1 text-sm text-muted">
-        Enter your Profile ID and Order ID to check a recharge status.
+        Enter your Order ID to check a recharge status.
       </p>
 
       <div className="mt-4 space-y-3">
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="IMO Profile ID"
-          value={profileId}
-          onChange={(e) => setProfileId(e.target.value.replace(/[^\d]/g, ""))}
-          className="w-full rounded-input border border-border-strong bg-surface px-4 py-2.5 text-sm text-foreground placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
-        />
         <input
           type="text"
           placeholder="Order ID (e.g. IMO-10241)"
@@ -99,7 +87,7 @@ export function TransactionLookup({ highlightOrder }: TransactionLookupProps) {
 
       {result === "not_found" && (
         <p className="mt-4 text-sm text-muted">
-          No matching order found for that Profile ID and Order ID.
+          No matching order found for that Order ID.
         </p>
       )}
 

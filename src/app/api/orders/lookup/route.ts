@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(request: NextRequest) {
-  const profileId = request.nextUrl.searchParams.get("profileId")?.trim();
   const orderId = request.nextUrl.searchParams.get("orderId")?.trim();
 
-  if (!profileId || !orderId) {
+  if (!orderId) {
     return NextResponse.json(
-      { error: "Both profileId and orderId are required." },
+      { error: "orderId is required." },
       { status: 400 }
     );
   }
@@ -17,7 +16,6 @@ export async function GET(request: NextRequest) {
     .select(
       "order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at"
     )
-    .eq("imo_profile_id", profileId)
     .ilike("order_number", orderId)
     .maybeSingle();
 

@@ -5,7 +5,6 @@ import { PaymentFlowState, RechargeOrder, RechargePackage } from "@/lib/types";
 import { isValidPhone, isValidProfileId, sleep } from "@/lib/utils";
 import { openCashfreeCheckout } from "@/lib/cashfree-client";
 import { ProfileIdInput } from "./ProfileIdInput";
-import { PhoneInput } from "./PhoneInput";
 import { RechargePackages } from "./RechargePackages";
 import { QuantitySelector } from "./QuantitySelector";
 import { OrderSummary } from "./OrderSummary";
@@ -57,8 +56,6 @@ async function pollOrderStatus(orderNumber: string, attempts = 4): Promise<Verif
 export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps) {
   const [profileId, setProfileId] = useState("");
   const [profileIdError, setProfileIdError] = useState("");
-  const [phone, setPhone] = useState("");
-  const [phoneError, setPhoneError] = useState("");
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [packageError, setPackageError] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -72,23 +69,13 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     let valid = true;
 
     if (!profileId.trim()) {
-      setProfileIdError("Please enter your IMO Profile ID.");
+      setProfileIdError("Please enter your IMO ID or mobile number.");
       valid = false;
     } else if (!isValidProfileId(profileId)) {
-      setProfileIdError("Enter a valid Profile ID.");
+      setProfileIdError("Enter a valid IMO ID or 10-digit mobile number.");
       valid = false;
     } else {
       setProfileIdError("");
-    }
-
-    if (!phone.trim()) {
-      setPhoneError("Please enter your mobile number.");
-      valid = false;
-    } else if (!isValidPhone(phone)) {
-      setPhoneError("Enter a valid 10-digit mobile number.");
-      valid = false;
-    } else {
-      setPhoneError("");
     }
 
     if (!selectedPackage) {
@@ -116,7 +103,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
           imoProfileId: profileId.trim(),
           packageId: selectedPackage.id,
           quantity,
-          customerPhone: phone.trim(),
+          ...(isValidPhone(profileId) ? { customerPhone: profileId.trim() } : {}),
         }),
       });
     } catch {
@@ -196,15 +183,6 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
                 if (profileIdError) setProfileIdError("");
               }}
               error={profileIdError}
-            />
-
-            <PhoneInput
-              value={phone}
-              onChange={(value) => {
-                setPhone(value);
-                if (phoneError) setPhoneError("");
-              }}
-              error={phoneError}
             />
           </div>
         </div>

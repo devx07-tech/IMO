@@ -1,6 +1,7 @@
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Phone } from "lucide-react";
 import { buildWhatsAppLink } from "@/lib/utils";
 
+const IMO_SUPPORT_LINK = "https://call.imo.im/kamalseller";
 const SUPPORT_WHATSAPP = "+91 63823 71168";
 
 export function SupportCard() {
@@ -16,15 +17,26 @@ export function SupportCard() {
         Contact our support team for recharge or payment assistance.
       </p>
 
-      <a
-        href={whatsappLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-4 flex items-center justify-center gap-2 rounded-button border border-border-strong px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:border-success hover:text-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        <MessageCircle className="h-4 w-4" aria-hidden="true" />
-        WhatsApp Support
-      </a>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <a
+          href={IMO_SUPPORT_LINK}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center justify-center gap-2 rounded-button px-4 py-3 text-sm font-semibold text-white shadow-soft transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-gradient-to-r from-accent to-[#3b8bff] hover:shadow-[0_8px_20px_rgba(13,110,253,0.35)] focus-visible:ring-accent"
+        >
+          <Phone className="h-4 w-4 transition-transform duration-200 group-hover:rotate-12" aria-hidden="true" />
+          IMO Support
+        </a>
+        <a
+          href={whatsappLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center justify-center gap-2 rounded-button px-4 py-3 text-sm font-semibold text-white shadow-soft transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 bg-gradient-to-r from-success to-[#22c55e] hover:shadow-[0_8px_20px_rgba(22,163,74,0.35)] focus-visible:ring-success"
+        >
+          <MessageCircle className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" aria-hidden="true" />
+          WhatsApp Support
+        </a>
+      </div>
     </section>
   );
 }
