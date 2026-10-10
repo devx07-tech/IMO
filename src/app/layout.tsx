@@ -17,6 +17,15 @@ export const metadata: Metadata = {
   title: "IMO Recharge — Powered by Kamal",
   description:
     "Recharge your IMO account quickly and securely. Enter your IMO ID, pick a package, and pay securely by UPI.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "IMO Recharge — Powered by Kamal",
+    description: "Fast, secure IMO credit recharge with UPI payment.",
+    url: "/",
+    siteName: "IMO Recharge",
+    type: "website",
+    locale: "en_IN",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
