@@ -6,14 +6,28 @@ import { HelpCircle, X } from "lucide-react";
 interface HelpVideoButtonProps {
   src: string;
   title: string;
+  /** Optional short text shown above the video. */
+  description?: string;
+  /** Overrides the default round button styling of the "?" trigger. */
+  triggerClassName?: string;
+  iconClassName?: string;
 }
+
+const DEFAULT_TRIGGER =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-accent shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent hover:text-white active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 
 /**
  * A "?" button that opens a video guide in a modal. Uses the native <dialog>
  * element for focus trapping, Esc-to-close and backdrop for free. The video
  * isn't downloaded until the dialog is opened (preload="none").
  */
-export function HelpVideoButton({ src, title }: HelpVideoButtonProps) {
+export function HelpVideoButton({
+  src,
+  title,
+  description,
+  triggerClassName = DEFAULT_TRIGGER,
+  iconClassName = "h-5 w-5",
+}: HelpVideoButtonProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -46,9 +60,9 @@ export function HelpVideoButton({ src, title }: HelpVideoButtonProps) {
         onClick={open}
         aria-label={`Watch video: ${title}`}
         title={title}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent-soft text-accent shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:bg-accent hover:text-white active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        className={triggerClassName}
       >
-        <HelpCircle className="h-5 w-5" aria-hidden="true" />
+        <HelpCircle className={iconClassName} aria-hidden="true" />
       </button>
 
       <dialog
@@ -72,6 +86,9 @@ export function HelpVideoButton({ src, title }: HelpVideoButtonProps) {
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
+          {description && (
+            <p className="mb-2 px-1 text-xs text-muted">{description}</p>
+          )}
           <video
             ref={videoRef}
             src={src}

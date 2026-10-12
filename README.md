@@ -83,5 +83,5 @@ server code using the service-role key.
   Vercel logs or wire it to an error tracker.
 - **Package changes** in the admin console update the public price list
   immediately; otherwise the homepage refreshes at most once a minute.
-- **Help video**: `public/help/imo-support-guide.mp4`, opened from the "?"
-  button next to IMO Support. Replace the file to update it.
+- **Help video**: `public/help/imo-id-guide.mp4`, opened from the "?" next
+  to the "IMO ID / Mobile Number" label. Replace the file to update it.
