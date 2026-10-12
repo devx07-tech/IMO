@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentAdmin } from "@/lib/auth/current-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
 import { logAudit, type AuditAction } from "@/lib/audit";
 import { sendOrderNotification } from "@/lib/notifications/service";
 import type { OrderRow, RechargeStatus } from "@/lib/db-types";
@@ -25,7 +25,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const admin = await getCurrentAdmin();
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const { admin } = auth;
   const parsed = actionSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
@@ -84,7 +86,7 @@ export async function POST(
   }
 
   await logAudit({
-    adminId: admin?.adminId,
+    adminId: admin.adminId,
     action: transition.auditAction,
     entityType: "order",
     entityId: id,

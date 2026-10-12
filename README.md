@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IMO Recharge
 
-## Getting Started
+Customer site and admin console for IMO credit recharges, built with Next.js 16
+(App Router), Supabase (Postgres) and Cashfree for UPI payments.
 
-First, run the development server:
+- **Customer site** (`/`): enter IMO ID, pick a package, pay, and look up order status.
+- **Admin console** (`/admin`): orders, recharge queue, packages, notifications, audit log.
+- **Notifications**: Telegram message to the admin on every paid / completed order.
+
+## Local development
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in the values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create an admin account:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+node scripts/seed-admin.mjs you@example.com 'a-long-password' "Your Name"
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Command             | What it does                    |
+| ------------------- | ------------------------------- |
+| `npm run dev`       | Dev server on :3000             |
+| `npm run build`     | Production build                |
+| `npm run lint`      | ESLint                          |
+| `npm run typecheck` | TypeScript, no emit             |
+| `npm test`          | Unit tests (Vitest)             |
 
-To learn more about Next.js, take a look at the following resources:
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, a production
+dependency audit and a build on every push and pull request.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Environment variables
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+See `.env.example`. All secrets are server-only; only `NEXT_PUBLIC_*` values
+reach the browser.
 
-## Deploy on Vercel
+| Variable                    | Notes                                              |
+| --------------------------- | -------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`  | Supabase project URL                               |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose to the client.           |
+| `ADMIN_SESSION_SECRET`      | ≥ 32 random chars. Rotating it signs all admins out |
+| `CASHFREE_*`                | Payment gateway credentials and `sandbox`/`production` |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Admin order alerts                   |
+| `NEXT_PUBLIC_SITE_URL`      | Canonical URL, used for metadata and payment return URLs |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Database
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Migrations live in `supabase/migrations/` and are applied to the Supabase
+project in order. Row Level Security is enabled on every table with **no**
+policies, so the public anon key can read nothing; all access goes through
+server code using the service-role key.
+
+## Security model
+
+- **Admin auth**: bcrypt passwords, HS256 JWT in an `httpOnly`, `secure`,
+  `SameSite=Lax` cookie (24 h). Checked in `src/proxy.ts` *and* again in every
+  admin route handler (`requireAdmin`), which also enforces server-side
+  revocation via `admins.sessions_valid_after`. Logging out revokes every
+  session for that admin. To force-sign-out an admin, set
+  `sessions_valid_after = now()` on their row.
+- **Brute force**: per-IP and per-email login limits; constant-time response
+  for unknown emails.
+- **Rate limiting**: shared across all server instances via the
+  `rate_limit_hit` Postgres function, with an in-memory fallback if the
+  database is unreachable.
+- **CSRF**: cross-origin `POST`/`PATCH`/`DELETE` to `/api/admin/*` is rejected.
+- **Headers**: CSP, HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`,
+  `Permissions-Policy`, COOP (see `next.config.ts`).
+- **Order lookup**: exact match on a validated order number; order numbers
+  are 10 random base32 characters, so they can't be guessed.
+
+## Operations
+
+- **Health check**: `GET /api/health` returns `200 {"status":"ok"}` or `503`;
+  point an uptime monitor at it.
+- **Errors**: unhandled server errors are logged as one JSON line with
+  `"event":"server_error"` (`src/instrumentation.ts`); filter on that in the
+  Vercel logs or wire it to an error tracker.
+- **Package changes** in the admin console update the public price list
+  immediately; otherwise the homepage refreshes at most once a minute.
+- **Help video**: `public/help/imo-support-guide.mp4`, opened from the "?"
+  button next to IMO Support. Replace the file to update it.

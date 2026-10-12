@@ -14,6 +14,7 @@ export type AdminRow = {
   name: string | null;
   created_at: string;
   last_login_at: string | null;
+  sessions_valid_after: string;
 };
 
 export type PackageRow = {
@@ -134,6 +135,11 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      rate_limit_hit: {
+        Args: { p_key: string; p_limit: number; p_window_seconds: number };
+        Returns: { allowed: boolean; retry_after: number }[];
+      };
+    };
   };
 };

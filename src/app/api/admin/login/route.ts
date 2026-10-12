@@ -4,11 +4,17 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifyPassword } from "@/lib/auth/password";
 import { ADMIN_SESSION_COOKIE, SESSION_COOKIE_MAX_AGE, createSessionToken } from "@/lib/auth/session";
 import { logAudit } from "@/lib/audit";
+import { rateLimit } from "@/lib/rate-limit";
 
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email().max(254),
+  password: z.string().min(1).max(200),
 });
+
+// bcrypt hash of a random throwaway string. Comparing against it when the
+// email is unknown keeps response time the same, so timing can't reveal
+// which admin emails exist.
+const DUMMY_HASH = "$2b$12$SUOCf9mJn3Eh30/kLvaJ/.Wnx3x.JgVXY7ekHIGoUegcZJeOLSl/6";
 
 export async function POST(request: NextRequest) {
   const parsed = loginSchema.safeParse(await request.json().catch(() => null));
@@ -17,15 +23,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Enter a valid email and password." }, { status: 400 });
   }
 
-  const { email, password } = parsed.data;
+  const { password } = parsed.data;
+  const email = parsed.data.email.toLowerCase();
+
+  // Per-account limit on top of the proxy's per-IP limit, so a distributed
+  // attacker can't brute-force one admin's password from many IPs.
+  const limit = await rateLimit(`login-email:${email}`, 10, 60 * 60_000);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
+    );
+  }
 
   const { data: admin } = await supabaseAdmin
     .from("admins")
     .select("*")
-    .eq("email", email.toLowerCase())
+    .eq("email", email)
     .maybeSingle();
 
-  const passwordOk = admin ? await verifyPassword(password, admin.password_hash) : false;
+  const passwordOk = await verifyPassword(password, admin?.password_hash ?? DUMMY_HASH);
 
   if (!admin || !passwordOk) {
     await logAudit({

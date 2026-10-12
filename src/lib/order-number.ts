@@ -2,12 +2,18 @@ import "server-only";
 import { randomInt } from "crypto";
 import { supabaseAdmin } from "./supabase-admin";
 
-function randomOrderNumber(): string {
-  return `IMO-${randomInt(10000, 99999)}`;
+// Crockford base32: no I, L, O or U, so IDs read back over the phone unambiguously.
+const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const LENGTH = 10; // 32^10 ≈ 10^15 — not guessable, effectively collision-free.
+
+export function randomOrderNumber(): string {
+  let id = "";
+  for (let i = 0; i < LENGTH; i++) id += ALPHABET[randomInt(ALPHABET.length)];
+  return `IMO-${id}`;
 }
 
 export async function generateUniqueOrderNumber(): Promise<string> {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     const candidate = randomOrderNumber();
     const { data, error } = await supabaseAdmin
       .from("orders")
@@ -18,5 +24,5 @@ export async function generateUniqueOrderNumber(): Promise<string> {
     if (error) throw error;
     if (!data) return candidate;
   }
-  throw new Error("Could not generate a unique order number after 10 attempts.");
+  throw new Error("Could not generate a unique order number.");
 }

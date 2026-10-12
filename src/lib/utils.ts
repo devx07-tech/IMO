@@ -24,11 +24,6 @@ export function formatDateTime(iso: string): string {
   return `${day} • ${time}`;
 }
 
-export function generateOrderId(): string {
-  const n = Math.floor(10000 + Math.random() * 89999);
-  return `IMO-${n}`;
-}
-
 export function isValidProfileId(value: string): boolean {
   return /^\d{6,15}$/.test(value.trim());
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
 
 function todayBoundsIST(): { start: string; end: string } {
   const dateStr = new Intl.DateTimeFormat("en-CA", {
@@ -12,6 +13,8 @@ function todayBoundsIST(): { start: string; end: string } {
 }
 
 export async function GET() {
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { start, end } = todayBoundsIST();
 
   const [

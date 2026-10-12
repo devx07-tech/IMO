@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentAdmin } from "@/lib/auth/current-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
 import { logAudit } from "@/lib/audit";
 
 export async function GET() {
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { data, error } = await supabaseAdmin
     .from("packages")
     .select("*")
@@ -25,7 +28,9 @@ const createSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const admin = await getCurrentAdmin();
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const { admin } = auth;
   const parsed = createSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success) {
@@ -48,12 +53,15 @@ export async function POST(request: NextRequest) {
   }
 
   await logAudit({
-    adminId: admin?.adminId,
+    adminId: admin.adminId,
     action: "package_created",
     entityType: "package",
     entityId: pkg.id,
     metadata: { credits, price },
   });
+
+  // Customers see the new price list immediately, not after the ISR window.
+  revalidatePath("/");
 
   return NextResponse.json({ package: pkg }, { status: 201 });
 }

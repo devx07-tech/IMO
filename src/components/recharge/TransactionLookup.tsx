@@ -62,7 +62,7 @@ export function TransactionLookup({ highlightOrder }: TransactionLookupProps) {
       <div className="mt-4 space-y-3">
         <input
           type="text"
-          placeholder="Order ID (e.g. IMO-10241)"
+          placeholder="Order ID (e.g. IMO-7K3M9Q2XRB)"
           value={orderId}
           onChange={(e) => setOrderId(e.target.value)}
           className="w-full rounded-input border border-border-strong bg-surface px-4 py-2.5 text-sm text-foreground placeholder:text-muted/70 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"

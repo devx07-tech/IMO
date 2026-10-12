@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { retryNotification } from "@/lib/notifications/service";
-import { getCurrentAdmin } from "@/lib/auth/current-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
 import { logAudit } from "@/lib/audit";
 
 export async function POST(
@@ -8,12 +8,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const admin = await getCurrentAdmin();
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const { admin } = auth;
 
   const result = await retryNotification(id);
 
   await logAudit({
-    adminId: admin?.adminId,
+    adminId: admin.adminId,
     action: "notification_retried",
     entityType: "notification",
     entityId: id,

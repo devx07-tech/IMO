@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
+import { parseIntParam } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { searchParams } = request.nextUrl;
-  const limit = Math.min(Number(searchParams.get("limit") ?? 50), 100);
-  const offset = Number(searchParams.get("offset") ?? 0);
+  const limit = Math.max(1, parseIntParam(searchParams.get("limit"), 50, 100));
+  const offset = parseIntParam(searchParams.get("offset"), 0, 100_000);
 
   const { data, error, count } = await supabaseAdmin
     .from("notifications")

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getCurrentAdmin } from "@/lib/auth/current-admin";
+import { requireAdmin } from "@/lib/auth/current-admin";
 import { logAudit } from "@/lib/audit";
 import type { PackageRow } from "@/lib/db-types";
 
@@ -17,7 +18,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const admin = await getCurrentAdmin();
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
+  const { admin } = auth;
   const parsed = updateSchema.safeParse(await request.json().catch(() => null));
 
   if (!parsed.success || Object.keys(parsed.data).length === 0) {
@@ -53,7 +56,7 @@ export async function PATCH(
 
   const statusChanged = parsed.data.active !== undefined && parsed.data.active !== existing.active;
   await logAudit({
-    adminId: admin?.adminId,
+    adminId: admin.adminId,
     action: statusChanged
       ? parsed.data.active
         ? "package_activated"
@@ -63,6 +66,9 @@ export async function PATCH(
     entityId: id,
     metadata: parsed.data,
   });
+
+  // Customers see the new price list immediately, not after the ISR window.
+  revalidatePath("/");
 
   return NextResponse.json({ package: updated });
 }

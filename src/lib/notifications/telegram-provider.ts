@@ -15,10 +15,12 @@ export class TelegramProvider implements NotificationProvider {
       const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           chat_id: recipient,
+          // Plain text on purpose: no parse_mode means order data can never be
+          // interpreted as Telegram HTML/Markdown markup.
           text: message,
-          parse_mode: "HTML",
         }),
       });
 

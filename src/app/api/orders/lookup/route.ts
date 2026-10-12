@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { normalizeOrderNumber } from "@/lib/validation";
 
 export async function GET(request: NextRequest) {
-  const orderId = request.nextUrl.searchParams.get("orderId")?.trim();
+  const raw = request.nextUrl.searchParams.get("orderId");
 
-  if (!orderId) {
+  if (!raw?.trim()) {
     return NextResponse.json(
       { error: "orderId is required." },
       { status: 400 }
     );
+  }
+
+  // Exact match only: a malformed ID can never match, and LIKE wildcards
+  // (% and _) can't be used to enumerate other customers' orders.
+  const orderNumber = normalizeOrderNumber(raw);
+  if (!orderNumber) {
+    return NextResponse.json({ order: null });
   }
 
   const { data: order, error } = await supabaseAdmin
@@ -16,7 +24,7 @@ export async function GET(request: NextRequest) {
     .select(
       "order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at"
     )
-    .ilike("order_number", orderId)
+    .eq("order_number", orderNumber)
     .maybeSingle();
 
   if (error) {

@@ -3,6 +3,7 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock } from "lucide-react";
+import { safeAdminRedirect } from "@/lib/validation";
 
 function LoginForm() {
   const router = useRouter();
@@ -31,7 +32,7 @@ function LoginForm() {
         return;
       }
 
-      const next = searchParams.get("next") ?? "/admin";
+      const next = safeAdminRedirect(searchParams.get("next"));
       router.push(next);
       router.refresh();
     } catch {

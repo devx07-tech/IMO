@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { PaymentStatus, RechargeStatus } from "@/lib/db-types";
+import { requireAdmin } from "@/lib/auth/current-admin";
+import { parseIntParam, sanitizeSearch } from "@/lib/validation";
 
 type OrderFilter =
   | { column: "payment_status"; value: PaymentStatus }
@@ -17,11 +19,13 @@ const FILTER_MAP: Record<string, OrderFilter> = {
 };
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.response) return auth.response;
   const { searchParams } = request.nextUrl;
   const filter = searchParams.get("filter") ?? "all";
-  const search = searchParams.get("search")?.trim();
-  const limit = Math.min(Number(searchParams.get("limit") ?? 50), 100);
-  const offset = Number(searchParams.get("offset") ?? 0);
+  const search = sanitizeSearch(searchParams.get("search"));
+  const limit = Math.max(1, parseIntParam(searchParams.get("limit"), 50, 100));
+  const offset = parseIntParam(searchParams.get("offset"), 0, 100_000);
 
   let query = supabaseAdmin
     .from("orders")
