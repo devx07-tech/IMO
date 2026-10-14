@@ -48,7 +48,7 @@ export default function AdminOrdersPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-foreground">Orders</h1>
-        <p className="text-sm text-muted">All recharge orders, searchable by Order ID, Profile ID or 12-digit UTR.</p>
+        <p className="text-sm text-muted">All recharge orders, searchable by Order ID, IMO ID, WhatsApp number or Razorpay payment ID.</p>
         <p className="mt-1 text-xs text-muted">Payment updates refresh every 15 seconds.</p>
       </div>
 
@@ -80,7 +80,7 @@ export default function AdminOrdersPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <input
             type="text"
-            placeholder="Search Order ID, Profile ID or UTR"
+            placeholder="Order ID, IMO ID, WhatsApp or pay_..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
             className="w-full rounded-input border border-border-strong bg-surface py-2 pl-9 pr-3 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"

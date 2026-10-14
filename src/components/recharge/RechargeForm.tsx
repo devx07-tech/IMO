@@ -2,16 +2,16 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PaymentFlowState, RechargeOrder, RechargePackage } from "@/lib/types";
-import { isValidProfileId } from "@/lib/utils";
+import { cn, isValidPhone, isValidProfileId, sleep } from "@/lib/utils";
 import { normalizeOrderNumber } from "@/lib/validation";
 import type { PublicOrder } from "@/lib/public-order";
+import { openRazorpayCheckout, type CheckoutSuccess } from "@/lib/razorpay-checkout";
 import { ProfileIdInput } from "./ProfileIdInput";
 import { RechargePackages } from "./RechargePackages";
 import { QuantitySelector } from "./QuantitySelector";
 import { OrderSummary } from "./OrderSummary";
 import { PaymentButton } from "./PaymentButton";
 import { PaymentStatusModal } from "./PaymentStatusModal";
-import type { UpiPaymentInfo } from "./UpiPaymentPanel";
 
 interface RechargeFormProps {
   packages: RechargePackage[];
@@ -32,8 +32,9 @@ function toRechargeOrder(api: PublicOrder): RechargeOrder {
   };
 }
 
-async function fetchOrder(orderNumber: string, signal?: AbortSignal): Promise<PublicOrder> {
-  const res = await fetch(`/api/orders/verify?orderNumber=${encodeURIComponent(orderNumber)}`, { cache: "no-store", signal });
+async function fetchOrder(orderNumber: string, sync = false, signal?: AbortSignal): Promise<PublicOrder> {
+  const params = new URLSearchParams({ orderNumber, ...(sync ? { sync: "1" } : {}) });
+  const res = await fetch(`/api/orders/verify?${params}`, { cache: "no-store", signal });
   const body = await res.json();
   if (!res.ok || !body.order) throw new Error(body.error ?? "Could not check payment status.");
   return body.order as PublicOrder;
@@ -49,28 +50,27 @@ function setOrderInUrl(orderNumber: string | null) {
 export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps) {
   const [profileId, setProfileId] = useState("");
   const [profileIdError, setProfileIdError] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [whatsappError, setWhatsappError] = useState("");
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [packageError, setPackageError] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [flowState, setFlowState] = useState<PaymentFlowState>("idle");
   const [currentOrder, setCurrentOrder] = useState<RechargeOrder | null>(null);
-  const [payment, setPayment] = useState<UpiPaymentInfo | null>(null);
+  // The latest unpaid order, so "Try again" reopens the same Razorpay order.
+  const [unpaidOrder, setUnpaidOrder] = useState<PublicOrder | null>(null);
   const [submitError, setSubmitError] = useState("");
   const submitting = useRef(false);
+  const paymentHandled = useRef(false);
 
-  /** Moves the checkout to whatever state the server reports for the order. */
-  const applyOrder = (api: PublicOrder) => {
+  /** Records the server's view of the order; returns true once it's paid. */
+  const applyOrder = (api: PublicOrder): boolean => {
     setCurrentOrder(toRechargeOrder(api));
-    if (api.paymentStatus === "pending" && api.payment) {
-      setPayment({ orderNumber: api.orderNumber, ...api.payment });
-      setFlowState(api.payment.utrSubmitted ? "pending" : "awaiting_payment");
-      return;
-    }
-    setPayment(null);
-    setFlowState(api.paymentStatus === "paid" ? "success" : api.paymentStatus === "failed" ? "expired" : "failed");
+    setUnpaidOrder(api.paymentStatus === "pending" && api.checkout ? api : null);
+    return api.paymentStatus === "paid";
   };
 
-  // Resume an order after a reload or when the customer comes back from their UPI app.
+  // Resume an order after a reload or when the customer comes back to the page.
   useEffect(() => {
     const orderNumber = normalizeOrderNumber(new URLSearchParams(window.location.search).get("order"));
     if (!orderNumber) return;
@@ -79,8 +79,11 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
       submitting.current = true;
       setFlowState("verifying");
       try {
-        const api = await fetchOrder(orderNumber!, controller.signal);
-        if (!controller.signal.aborted) applyOrder(api);
+        const api = await fetchOrder(orderNumber!, true, controller.signal);
+        if (controller.signal.aborted) return;
+        const paid = applyOrder(api);
+        setFlowState(paid ? "success" : api.paymentStatus === "pending" ? "failed" : "idle");
+        if (!paid && api.paymentStatus !== "pending") setOrderInUrl(null);
       } catch {
         if (controller.signal.aborted) return;
         setFlowState("idle");
@@ -92,31 +95,6 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     void resume();
     return () => { controller.abort(); submitting.current = false; };
   }, []);
-
-  // While waiting, poll for the server-side confirmation, and check at once
-  // when the customer switches back from their UPI app.
-  const watchedOrder = flowState === "awaiting_payment" || flowState === "pending" ? currentOrder?.id ?? null : null;
-  const reviewing = flowState === "pending";
-  useEffect(() => {
-    if (!watchedOrder) return;
-    const controller = new AbortController();
-    const check = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const api = await fetchOrder(watchedOrder, controller.signal);
-        if (!controller.signal.aborted) applyOrder(api);
-      } catch { /* transient; the next tick retries */ }
-    };
-    const timer = setInterval(() => void check(), reviewing ? 10_000 : 3_000);
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("focus", check);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", check);
-      window.removeEventListener("focus", check);
-    };
-  }, [watchedOrder, reviewing]);
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
 
@@ -133,6 +111,13 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
       setProfileIdError("");
     }
 
+    if (!isValidPhone(whatsapp)) {
+      setWhatsappError("Enter your 10-digit WhatsApp number.");
+      valid = false;
+    } else {
+      setWhatsappError("");
+    }
+
     if (!selectedPackage) {
       setPackageError("Please select a recharge package.");
       valid = false;
@@ -141,6 +126,51 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     }
 
     return valid;
+  };
+
+  /** After Razorpay reports success: confirm on the server, then keep checking briefly. */
+  const confirmPayment = async (orderNumber: string, response: CheckoutSuccess) => {
+    setFlowState("verifying");
+    try {
+      const res = await fetch("/api/orders/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNumber, ...response }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (body.order && applyOrder(body.order as PublicOrder)) { setFlowState("success"); return; }
+    } catch { /* fall through to status checks */ }
+
+    // The webhook may land a moment later; ask Razorpay directly for up to ~45s.
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await sleep(3000);
+      try {
+        if (applyOrder(await fetchOrder(orderNumber, true))) { setFlowState("success"); return; }
+      } catch { /* transient; retry */ }
+    }
+    setFlowState("pending");
+  };
+
+  const openCheckout = async (order: PublicOrder) => {
+    if (!order.checkout) return;
+    paymentHandled.current = false;
+    setFlowState("awaiting_payment");
+    try {
+      await openRazorpayCheckout({
+        ...order.checkout,
+        orderNumber: order.orderNumber,
+        description: `${(order.credits * order.quantity).toLocaleString("en-IN")} diamonds · IMO ID ${order.imoProfileId}`,
+        phone: isValidPhone(whatsapp) ? whatsapp : null,
+        onSuccess: (response) => {
+          paymentHandled.current = true;
+          void confirmPayment(order.orderNumber, response);
+        },
+        onDismiss: () => { if (!paymentHandled.current) setFlowState("failed"); },
+      });
+    } catch {
+      setFlowState("idle");
+      setSubmitError("Could not open the payment window. Check your internet connection and try again.");
+    }
   };
 
   const runPaymentFlow = async () => {
@@ -160,6 +190,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
           imoProfileId: profileId.trim(),
           packageId: selectedPackage.id,
           quantity,
+          whatsapp,
         }),
       });
     } catch {
@@ -177,46 +208,10 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
       return;
     }
     const order = body.order as PublicOrder;
-    // Keep the order in the URL so a reload or the browser Back button resumes it.
+    // Keep the order in the URL so a reload or coming back from a UPI app resumes it.
     setOrderInUrl(order.orderNumber);
     applyOrder(order);
-  };
-
-  const submitUtr = async (utr: string): Promise<string | null> => {
-    if (!currentOrder) return "Order not found.";
-    try {
-      const res = await fetch("/api/orders/utr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderNumber: currentOrder.id, utr }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.order) return body.error ?? "Could not submit your UTR. Please try again.";
-      applyOrder(body.order as PublicOrder);
-      return null;
-    } catch {
-      return "Network error. Please try again.";
-    }
-  };
-
-  const cancelOrder = async (): Promise<string | null> => {
-    if (!currentOrder) return "Order not found.";
-    try {
-      const res = await fetch("/api/orders/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderNumber: currentOrder.id }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) return body.error ?? "Could not cancel the order. Please try again.";
-      setOrderInUrl(null);
-      setPayment(null);
-      setCurrentOrder(null);
-      setFlowState("idle");
-      return null;
-    } catch {
-      return "Network error. Please try again.";
-    }
+    await openCheckout(order);
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -225,16 +220,17 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   };
 
   const closeModal = () => {
-    // An unpaid order stays resumable from the banner below; anything else is finished.
-    if (flowState !== "awaiting_payment" && flowState !== "pending") setOrderInUrl(null);
+    if (flowState === "success") setOrderInUrl(null);
     setFlowState("idle");
   };
 
   const retryPayment = () => {
-    setOrderInUrl(null);
-    setPayment(null);
-    setFlowState("idle");
-    void runPaymentFlow();
+    if (unpaidOrder) {
+      void openCheckout(unpaidOrder);
+    } else {
+      setFlowState("idle");
+      void runPaymentFlow();
+    }
   };
 
   const viewTransaction = () => {
@@ -265,6 +261,38 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
               }}
               error={profileIdError}
             />
+
+            <div>
+              <label htmlFor="whatsapp" className="mb-1.5 block text-sm font-medium text-foreground">
+                WhatsApp Number
+              </label>
+              <div className={cn(
+                "flex items-center rounded-input border bg-surface transition-colors focus-within:ring-2 focus-within:ring-accent/40",
+                whatsappError ? "border-error" : "border-border-strong focus-within:border-accent"
+              )}>
+                <span className="pl-4 pr-2 text-base text-muted">+91</span>
+                <input
+                  id="whatsapp"
+                  name="whatsapp"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  maxLength={10}
+                  placeholder="10-digit number"
+                  value={whatsapp}
+                  onChange={(e) => {
+                    setWhatsapp(e.target.value.replace(/[^\d]/g, "").slice(0, 10));
+                    if (whatsappError) setWhatsappError("");
+                  }}
+                  aria-invalid={Boolean(whatsappError)}
+                  aria-describedby="whatsapp-help"
+                  className="w-full rounded-input bg-transparent py-3 pr-4 text-base text-foreground placeholder:text-muted/70 focus:outline-none"
+                />
+              </div>
+              <p id="whatsapp-help" className={cn("mt-1.5 text-xs", whatsappError ? "font-medium text-error" : "text-muted")}>
+                {whatsappError || "We'll send your recharge confirmation here on WhatsApp."}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -285,13 +313,13 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
 
           <OrderSummary profileId={profileId} pkg={selectedPackage} quantity={quantity} />
 
-          {payment && flowState === "idle" && (
+          {unpaidOrder && flowState === "idle" && (
             <button
               type="button"
-              onClick={() => setFlowState(payment.utrSubmitted ? "pending" : "awaiting_payment")}
+              onClick={() => void openCheckout(unpaidOrder)}
               className="w-full rounded-input border border-warning/40 bg-warning-soft px-4 py-3 text-left text-sm text-foreground"
             >
-              Order {payment.orderNumber} is waiting for payment. <span className="font-semibold text-accent">Resume</span>
+              Order {unpaidOrder.orderNumber} is waiting for payment. <span className="font-semibold text-accent">Pay now</span>
             </button>
           )}
 
@@ -308,9 +336,6 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
       <PaymentStatusModal
         flowState={flowState}
         order={currentOrder}
-        payment={payment}
-        onSubmitUtr={submitUtr}
-        onCancelOrder={cancelOrder}
         onDone={closeModal}
         onRetry={retryPayment}
         onViewTransaction={viewTransaction}

@@ -1,6 +1,6 @@
-// Every new order is paid by direct UPI to our merchant UPI ID.
-export const PAYMENT_PROVIDER = "upi";
+// Every new order is paid through Razorpay Checkout.
+export const PAYMENT_PROVIDER = "razorpay";
 
 export function paymentProviderLabel(provider: string): string {
-  return provider === PAYMENT_PROVIDER ? "UPI (Paytm)" : `${provider} (legacy)`;
+  return provider === PAYMENT_PROVIDER ? "Razorpay" : `${provider} (legacy)`;
 }

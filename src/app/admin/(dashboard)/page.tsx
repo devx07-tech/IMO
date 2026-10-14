@@ -63,7 +63,7 @@ export default function AdminDashboardPage() {
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted">Operational snapshot of today&apos;s recharge activity.</p>
         <div className="mt-2 flex items-center gap-4 text-xs">
-          <Link href="/admin/payments" className="font-medium text-accent hover:underline">Manage UPI payments</Link>
+          <Link href="/admin/payments" className="font-medium text-accent hover:underline">Manage Razorpay payments</Link>
           <button type="button" onClick={() => void refresh()} className="font-medium text-accent hover:underline">Refresh</button>
           <span className="text-muted">Updates every 15 seconds</span>
         </div>

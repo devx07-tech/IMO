@@ -2,17 +2,21 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// Razorpay Checkout loads from checkout.razorpay.com and talks to api.razorpay.com
+// (plus its CDN and telemetry hosts), so *.razorpay.com is allowed.
+const RAZORPAY = "https://*.razorpay.com";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   // Next.js injects inline bootstrap scripts; dev mode also needs eval for HMR.
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} ${RAZORPAY}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${RAZORPAY}`,
   "font-src 'self'",
   "media-src 'self'",
-  "connect-src 'self'",
-  "frame-src 'none'",
-  "form-action 'self'",
+  `connect-src 'self' ${RAZORPAY}`,
+  `frame-src ${RAZORPAY}`,
+  `form-action 'self' ${RAZORPAY}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "object-src 'none'",

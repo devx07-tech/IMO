@@ -31,40 +31,21 @@ function buildMessage(
   timestampIso: string,
   details: string[] = []
 ): string {
-  const recharge = `${order.credits.toLocaleString("en-IN")} Credits`;
-
   if (event === "order_paid") {
+    const diamonds = order.credits * order.quantity;
     return [
-      "NEW IMO RECHARGE ORDER",
+      "NEW IMO RECHARGE ORDER - PAID",
       "",
-      `Order: ${order.order_number}`,
       `IMO ID: ${order.imo_profile_id}`,
-      `Recharge: ${recharge}`,
-      `Quantity: ${order.quantity}`,
-      `Amount: ₹${Number(order.amount).toFixed(2)}`,
-      `Payment: ${order.payment_status.toUpperCase()}`,
+      `Diamonds: ${diamonds.toLocaleString("en-IN")} (${order.credits.toLocaleString("en-IN")} × ${order.quantity})`,
+      `Amount paid: ₹${Number(order.amount).toFixed(2)}`,
+      ...(order.customer_phone ? [`Customer WhatsApp: +91 ${order.customer_phone}`, `Chat: https://wa.me/91${order.customer_phone}`] : []),
+      `Order: ${order.order_number}`,
       `Provider: ${paymentProviderLabel(order.payment_provider)}`,
-      ...(order.provider_payment_id ? [`UTR: ${order.provider_payment_id}`] : []),
-      ...details,
-      `Recharge: ${order.recharge_status.toUpperCase()}`,
-      "",
-      formatTimestamp(timestampIso),
-    ].join("\n");
-  }
-
-  if (event === "payment_review") {
-    return [
-      "PAYMENT NEEDS REVIEW",
-      "",
-      `Order: ${order.order_number}`,
-      `IMO ID: ${order.imo_profile_id}`,
-      `Recharge: ${recharge} × ${order.quantity}`,
-      `Expected amount: ₹${Number(order.amount).toFixed(2)}`,
-      `Customer UTR: ${order.customer_utr ?? "-"}`,
       ...details,
       "",
-      "Check this UTR and amount in Paytm for Business before approving.",
-      adminUrl("/admin/payments"),
+      "Credit the diamonds, then mark the order completed:",
+      adminUrl("/admin/recharges"),
       "",
       formatTimestamp(timestampIso),
     ].join("\n");
@@ -75,7 +56,7 @@ function buildMessage(
     "",
     `Order: ${order.order_number}`,
     `IMO ID: ${order.imo_profile_id}`,
-    `Recharge: ${recharge}`,
+    `Diamonds: ${(order.credits * order.quantity).toLocaleString("en-IN")}`,
     `Status: ${order.recharge_status.toUpperCase()}`,
     "",
     formatTimestamp(timestampIso),
@@ -167,20 +148,6 @@ export async function sendOrderNotification(
     event,
     orderId: order.id,
     message: (createdAt) => buildMessage(event, order, createdAt, details),
-  });
-}
-
-/** Sends a free-form admin alert, e.g. a payment that matched no order. */
-export async function sendAdminAlert(
-  event: NotificationEvent,
-  lines: string[],
-  orderId: string | null = null
-): Promise<void> {
-  await deliver({
-    channel: "telegram",
-    event,
-    orderId,
-    message: (createdAt) => [...lines, "", adminUrl("/admin/payments"), "", formatTimestamp(createdAt)].join("\n"),
   });
 }
 

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { OrderDetailDrawer } from "@/components/admin/OrderDetailDrawer";
 import { paymentProviderLabel } from "@/lib/payment-provider";
+import { CustomerWhatsAppButton } from "@/components/admin/CustomerWhatsAppButton";
 
 interface QueueOrder {
   id: string;
@@ -14,7 +15,10 @@ interface QueueOrder {
   credits: number;
   quantity: number;
   amount: number;
+  customer_phone: string | null;
   payment_provider: string;
+  payment_status: "pending" | "paid" | "failed" | "refunded";
+  recharge_status: "waiting" | "processing" | "completed" | "failed";
   paid_at: string | null;
   created_at: string;
 }
@@ -130,6 +134,7 @@ export default function RechargeQueuePage() {
                         </p>
                         <p className="text-[11px] text-muted">{formatDateTime(order.created_at)}</p>
                       </button>
+                      <div className="mt-2"><CustomerWhatsAppButton order={order} compact /></div>
 
                       {section.action && (
                         <button

@@ -2,7 +2,6 @@ export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 export type RechargeStatus = "waiting" | "processing" | "completed" | "failed";
 export type NotificationChannel = "telegram" | "whatsapp";
 export type NotificationStatus = "pending" | "sent" | "failed";
-export type UpiEventStatus = "matched" | "unmatched" | "duplicate" | "ignored" | "dismissed";
 
 // NOTE: these are `type` aliases, not `interface`s, on purpose — the
 // Supabase client's generic constraints check each Row/Insert/Update
@@ -50,6 +49,7 @@ export type OrderRow = {
   expires_at: string | null;
   customer_utr: string | null;
   customer_utr_at: string | null;
+  customer_phone: string | null;
 };
 
 export type NotificationRow = {
@@ -64,19 +64,6 @@ export type NotificationRow = {
   created_at: string;
   sent_at: string | null;
   message: string | null;
-};
-
-export type UpiPaymentEventRow = {
-  id: string;
-  received_at: string;
-  source: string;
-  raw_text: string;
-  amount: number | null;
-  utr: string | null;
-  payer: string | null;
-  status: UpiEventStatus;
-  order_id: string | null;
-  resolved_at: string | null;
 };
 
 export type AuditLogRow = {
@@ -130,20 +117,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "notifications_order_id_fkey";
-            columns: ["order_id"];
-            isOneToOne: false;
-            referencedRelation: "orders";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-      upi_payment_events: {
-        Row: UpiPaymentEventRow;
-        Insert: Partial<UpiPaymentEventRow> & Pick<UpiPaymentEventRow, "source" | "raw_text" | "status">;
-        Update: Partial<UpiPaymentEventRow>;
-        Relationships: [
-          {
-            foreignKeyName: "upi_payment_events_order_id_fkey";
             columns: ["order_id"];
             isOneToOne: false;
             referencedRelation: "orders";

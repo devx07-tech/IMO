@@ -29,5 +29,4 @@ export type PaymentFlowState =
   | "verifying"
   | "success"
   | "failed"
-  | "expired"
   | "pending";

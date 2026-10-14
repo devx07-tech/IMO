@@ -5,6 +5,7 @@ import { RechargeOrder, RechargePackage } from "@/lib/types";
 import { RechargeForm } from "./RechargeForm";
 import { SupportCard } from "./SupportCard";
 import { TransactionLookup } from "./TransactionLookup";
+import { OpenInBrowserNotice } from "./OpenInBrowserNotice";
 
 interface RechargePageProps {
   packages: RechargePackage[];
@@ -24,6 +25,7 @@ export function RechargePage({ packages }: RechargePageProps) {
 
   return (
     <div className="space-y-5">
+      <OpenInBrowserNotice />
       <RechargeForm packages={packages} onViewTransaction={handleViewTransaction} />
       <SupportCard />
       <TransactionLookup key={lookupKey} highlightOrder={highlightOrder} />

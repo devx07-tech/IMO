@@ -10,4 +10,4 @@ export interface NotificationProvider {
   send(params: { recipient: string; message: string }): Promise<ProviderSendResult>;
 }
 
-export type NotificationEvent = "order_paid" | "recharge_completed" | "payment_review" | "payment_unmatched";
+export type NotificationEvent = "order_paid" | "recharge_completed";

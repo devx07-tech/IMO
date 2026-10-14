@@ -2,41 +2,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { normalizeOrderNumber } from "@/lib/validation";
 
+const FIELDS =
+  "order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at, paid_at, completed_at";
+
+/**
+ * Customer purchase history. `q` is an Order ID, an IMO ID or the WhatsApp
+ * number used at checkout. Only paid (or refunded) orders are listed, with no
+ * personal details beyond the IMO ID. Exact matches only, so wildcards can't
+ * be used to list other customers' orders; the proxy rate-limits this route.
+ */
 export async function GET(request: NextRequest) {
-  const raw = request.nextUrl.searchParams.get("orderId");
+  const raw = (request.nextUrl.searchParams.get("q") ?? "").trim();
+  if (!raw) return NextResponse.json({ error: "Enter your IMO ID, mobile number or Order ID." }, { status: 400 });
 
-  if (!raw?.trim()) {
-    return NextResponse.json(
-      { error: "orderId is required." },
-      { status: 400 }
-    );
-  }
-
-  // Exact match only: a malformed ID can never match, and LIKE wildcards
-  // (% and _) can't be used to enumerate other customers' orders.
   const orderNumber = normalizeOrderNumber(raw);
-  if (!orderNumber) {
-    return NextResponse.json({ order: null });
+  const digits = raw.replace(/[\s+-]/g, "").replace(/^91(?=[6-9]\d{9}$)/, "");
+  let query = supabaseAdmin.from("orders").select(FIELDS)
+    .in("payment_status", ["paid", "refunded"])
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (orderNumber) {
+    query = query.eq("order_number", orderNumber);
+  } else if (/^\d{6,15}$/.test(digits)) {
+    query = query.or(`imo_profile_id.eq.${digits},customer_phone.eq.${digits}`);
+  } else {
+    return NextResponse.json({ orders: [] });
   }
 
-  const { data: order, error } = await supabaseAdmin
-    .from("orders")
-    .select(
-      "order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at"
-    )
-    .eq("order_number", orderNumber)
-    .maybeSingle();
-
-  if (error) {
-    return NextResponse.json({ error: "Lookup failed." }, { status: 500 });
-  }
-
-  if (!order) {
-    return NextResponse.json({ order: null });
-  }
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: "Lookup failed." }, { status: 500 });
 
   return NextResponse.json({
-    order: {
+    orders: (data ?? []).map((order) => ({
       orderNumber: order.order_number,
       imoProfileId: order.imo_profile_id,
       credits: order.credits,
@@ -45,6 +43,8 @@ export async function GET(request: NextRequest) {
       paymentStatus: order.payment_status,
       rechargeStatus: order.recharge_status,
       createdAt: order.created_at,
-    },
+      paidAt: order.paid_at,
+      completedAt: order.completed_at,
+    })),
   });
 }

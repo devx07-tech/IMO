@@ -34,18 +34,20 @@ describe("admin payment access and configuration", () => {
     expect(mocks.from).not.toHaveBeenCalled();
   });
   it("reports readiness without returning secret values", async () => {
-    vi.stubEnv("UPI_BRIDGE_SECRET", "private-bridge-secret-do-not-return-0123456789");
+    vi.stubEnv("RAZORPAY_KEY_ID", "rzp_live_PUBLICKEY");
+    vi.stubEnv("RAZORPAY_KEY_SECRET", "private-key-secret-do-not-return");
+    vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "private-webhook-secret-do-not-return");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
     const response = await payments();
     const body = await response.json();
-    expect(body.configuration).toMatchObject({ upiId: "paytm.s2sovgg@pty", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.com/api/payments/upi-notify" });
-    expect(JSON.stringify(body)).not.toContain("private-bridge");
-    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "upi");
+    expect(body.configuration).toMatchObject({ keysConfigured: true, mode: "live", webhookSecretConfigured: true, webhookUrl: "https://kamalseller.com/api/webhooks/razorpay" });
+    expect(JSON.stringify(body)).not.toContain("private-");
+    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "razorpay");
   });
   it("reports missing credentials and database failures accurately", async () => {
-    vi.stubEnv("UPI_BRIDGE_SECRET", "");
+    vi.stubEnv("RAZORPAY_KEY_ID", ""); vi.stubEnv("RAZORPAY_KEY_SECRET", ""); vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "");
     const body = await (await payments()).json();
-    expect(body.configuration.bridgeSecretConfigured).toBe(false);
+    expect(body.configuration).toMatchObject({ keysConfigured: false, mode: "unconfigured", webhookSecretConfigured: false });
     mocks.execute.mockResolvedValueOnce({ data: null, error: { message: "unavailable" } });
     expect((await payments()).status).toBe(500);
   });
@@ -70,10 +72,9 @@ describe("admin order and revenue correlation", () => {
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "pending");
     expect(mocks.query.eq).not.toHaveBeenCalledWith("payment_status", "paid");
   });
-  it("finds orders by a 12-digit UTR", async () => {
-    await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?search=412345678901"));
-    expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("provider_payment_id.eq.412345678901"));
-    expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("customer_utr.eq.412345678901"));
+  it("finds orders by the customer's WhatsApp number", async () => {
+    await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?search=9876543210"));
+    expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("customer_phone.eq.9876543210"));
   });
   it("counts payments on the confirmation day in India time", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-14T20:00:00Z"));
@@ -88,13 +89,13 @@ describe("recharge payment guard", () => {
   const request = () => new NextRequest("https://kamalseller.com/api/admin/orders/row-1/recharge", {
     method: "POST", body: JSON.stringify({ action: "start" }), headers: { "Content-Type": "application/json" },
   });
-  it("blocks recharge of an unconfirmed UPI order", async () => {
-    mocks.query.maybeSingle.mockResolvedValueOnce({ data: { id: "row-1", payment_provider: "upi", payment_status: "pending", recharge_status: "waiting" }, error: null });
+  it("blocks recharge of an unconfirmed order", async () => {
+    mocks.query.maybeSingle.mockResolvedValueOnce({ data: { id: "row-1", payment_provider: "razorpay", payment_status: "pending", recharge_status: "waiting" }, error: null });
     expect((await recharge(request(), context)).status).toBe(400);
     expect(mocks.query.update).not.toHaveBeenCalled();
   });
   it("rechecks payment state on the conditional recharge update", async () => {
-    const order = { id: "row-1", payment_provider: "upi", payment_status: "paid", recharge_status: "waiting" };
+    const order = { id: "row-1", payment_provider: "razorpay", payment_status: "paid", recharge_status: "waiting" };
     mocks.query.maybeSingle.mockResolvedValueOnce({ data: order, error: null }).mockResolvedValueOnce({ data: { ...order, recharge_status: "processing" }, error: null });
     expect((await recharge(request(), context)).status).toBe(200);
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "paid");
