@@ -53,7 +53,7 @@ reach the browser.
 ## Payments (direct UPI)
 
 Every order is paid to the merchant UPI ID in `src/lib/business.ts`
-(`paytm.s2sovgg@pty`, payee name `Kamal Seller`).
+(`paytm.s2sovgg@pty`, payee name `Kamal Srinivasan`).
 
 1. **Checkout.** The order gets a unique amount: the package total minus 1–99 paise
    (₹30 becomes e.g. ₹29.37). A partial unique index stops two open orders sharing an
