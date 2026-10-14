@@ -44,10 +44,12 @@ export function UpiPaymentPanel({
   payment,
   onSubmitUtr,
   onCancel,
+  onCancelOrder,
 }: {
   payment: UpiPaymentInfo;
   onSubmitUtr: (utr: string) => Promise<string | null>;
   onCancel: () => void;
+  onCancelOrder: () => Promise<string | null>;
 }) {
   const device = useDevice();
   const [showQr, setShowQr] = useState(false);
@@ -107,9 +109,9 @@ export function UpiPaymentPanel({
           <p className="pt-1 text-center text-xs text-muted">Or open directly</p>
           <div className="grid grid-cols-3 gap-2">
             {APP_BUTTONS.map(({ app, label }) => (
-              <a key={app} href={buildUpiLink(request, app)} aria-label={`Pay with ${label}`}
+              <a key={app} href={buildUpiLink(request, app, device === "ios" ? "ios" : "android")} aria-label={`Pay with ${label}`}
                 className="flex flex-col items-center gap-1 rounded-button border border-border-strong px-2 py-2.5 text-center text-xs font-semibold text-foreground hover:border-accent hover:text-accent">
-                <PaymentAppIcon app={app} className="h-6 w-auto max-w-full" />
+                <PaymentAppIcon app={app} className="h-6 w-auto max-w-full object-contain" />
                 {label}
               </a>
             ))}
@@ -155,6 +157,42 @@ export function UpiPaymentPanel({
         <span className="inline-flex items-center gap-1 text-muted"><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />Order {payment.orderNumber}</span>
         <button type="button" onClick={onCancel} className="font-medium text-muted hover:text-foreground">Close</button>
       </div>
+      <CancelOrderButton onCancelOrder={onCancelOrder} />
+    </div>
+  );
+}
+
+/** Two-step cancel so a customer who already paid doesn't cancel by mistake. */
+export function CancelOrderButton({ onCancelOrder }: { onCancelOrder: () => Promise<string | null> }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const cancel = async () => {
+    setBusy(true); setError("");
+    const failure = await onCancelOrder();
+    setBusy(false);
+    if (failure) setError(failure);
+  };
+
+  return (
+    <div className="mt-3 text-center text-xs">
+      {confirming ? (
+        <div className="rounded-input border border-border bg-background p-3">
+          <p className="text-foreground">Only cancel if you have <strong>not</strong> paid. If money was debited, enter your UTR instead.</p>
+          <div className="mt-2 flex justify-center gap-2">
+            <button type="button" disabled={busy} onClick={() => void cancel()}
+              className="rounded-button bg-error px-3 py-1.5 font-semibold text-white disabled:opacity-60">
+              {busy ? "Cancelling..." : "I haven't paid, cancel order"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setConfirming(false)}
+              className="rounded-button border border-border-strong px-3 py-1.5 font-semibold text-foreground">Keep order</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setConfirming(true)} className="font-medium text-error hover:underline">Cancel order</button>
+      )}
+      {error && <p role="alert" className="mt-1 text-error">{error}</p>}
     </div>
   );
 }

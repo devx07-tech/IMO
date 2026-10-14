@@ -27,14 +27,22 @@ export function normalizeUtr(input: string | null | undefined): string | null {
 }
 
 export type UpiApp = "upi" | "gpay" | "phonepe" | "paytm";
+export type UpiPlatform = "android" | "ios";
 
-// App-specific schemes open that app directly (needed on iPhone, which has no
-// system chooser for upi://). The generic link shows Android's app chooser.
-const APP_PREFIX: Record<UpiApp, string> = {
+// On iPhone each app registers its own scheme (iOS has no chooser for upi://).
+const IOS_PREFIX: Record<UpiApp, string> = {
   upi: "upi://pay",
-  gpay: "tez://upi/pay",
+  gpay: "gpay://upi/pay",
   phonepe: "phonepe://pay",
   paytm: "paytmmp://pay",
+};
+
+// On Android an intent:// URL sends the standard upi://pay link to one named
+// app, so every button carries the exact payload that works when scanned.
+const ANDROID_PACKAGE: Record<Exclude<UpiApp, "upi">, string> = {
+  gpay: "com.google.android.apps.nbu.paisa.user",
+  phonepe: "com.phonepe.app",
+  paytm: "net.one97.paytm",
 };
 
 export interface UpiPaymentRequest {
@@ -44,8 +52,11 @@ export interface UpiPaymentRequest {
   note: string;
 }
 
-/** Builds a UPI deep link with the payee, exact amount and order note prefilled. */
-export function buildUpiLink(request: UpiPaymentRequest, app: UpiApp = "upi"): string {
+/**
+ * Builds a UPI deep link with the payee, exact amount and order note prefilled.
+ * "upi" gives the generic link (any app; also used for the QR code).
+ */
+export function buildUpiLink(request: UpiPaymentRequest, app: UpiApp = "upi", platform: UpiPlatform = "android"): string {
   if (!VPA_RE.test(request.vpa)) throw new Error("Invalid UPI ID.");
   if (!Number.isSafeInteger(request.amountPaise) || request.amountPaise <= 0) {
     throw new Error("Invalid amount.");
@@ -58,5 +69,9 @@ export function buildUpiLink(request: UpiPaymentRequest, app: UpiApp = "upi"): s
     "cu=INR",
     `tn=${encodeURIComponent(request.note)}`,
   ];
-  return `${APP_PREFIX[app]}?${params.join("&")}`;
+  const query = params.join("&");
+  if (app === "upi") return `upi://pay?${query}`;
+  if (platform === "ios") return `${IOS_PREFIX[app]}?${query}`;
+  // Chrome opens the Play Store listing if the app isn't installed.
+  return `intent://pay?${query}#Intent;scheme=upi;package=${ANDROID_PACKAGE[app]};end`;
 }

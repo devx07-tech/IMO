@@ -11,6 +11,7 @@ interface PaymentStatusModalProps {
   order: RechargeOrder | null;
   payment: UpiPaymentInfo | null;
   onSubmitUtr: (utr: string) => Promise<string | null>;
+  onCancelOrder: () => Promise<string | null>;
   onDone: () => void;
   onRetry: () => void;
   onViewTransaction: () => void;
@@ -21,6 +22,7 @@ export function PaymentStatusModal({
   order,
   payment,
   onSubmitUtr,
+  onCancelOrder,
   onDone,
   onRetry,
   onViewTransaction,
@@ -39,7 +41,7 @@ export function PaymentStatusModal({
         )}
 
         {flowState === "awaiting_payment" && payment && (
-          <UpiPaymentPanel payment={payment} onSubmitUtr={onSubmitUtr} onCancel={onDone} />
+          <UpiPaymentPanel payment={payment} onSubmitUtr={onSubmitUtr} onCancel={onDone} onCancelOrder={onCancelOrder} />
         )}
 
         {flowState === "verifying" && (

@@ -199,6 +199,26 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     }
   };
 
+  const cancelOrder = async (): Promise<string | null> => {
+    if (!currentOrder) return "Order not found.";
+    try {
+      const res = await fetch("/api/orders/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNumber: currentOrder.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) return body.error ?? "Could not cancel the order. Please try again.";
+      setOrderInUrl(null);
+      setPayment(null);
+      setCurrentOrder(null);
+      setFlowState("idle");
+      return null;
+    } catch {
+      return "Network error. Please try again.";
+    }
+  };
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     void runPaymentFlow();
@@ -290,6 +310,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
         order={currentOrder}
         payment={payment}
         onSubmitUtr={submitUtr}
+        onCancelOrder={cancelOrder}
         onDone={closeModal}
         onRetry={retryPayment}
         onViewTransaction={viewTransaction}

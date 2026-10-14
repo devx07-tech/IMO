@@ -11,6 +11,7 @@ export const config = {
     "/api/orders/lookup",
     "/api/orders/verify",
     "/api/orders/utr",
+    "/api/orders/cancel",
     "/api/payments/upi-notify",
   ],
 };
@@ -59,6 +60,10 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/api/orders/utr") {
     // Slows down guessing UTRs against open orders.
     const r = await rateLimit(`utr:${ip}`, 6, 10 * MINUTE);
+    if (!r.ok) return tooMany(r.retryAfter);
+  }
+  if (pathname === "/api/orders/cancel") {
+    const r = await rateLimit(`cancel:${ip}`, 10, 10 * MINUTE);
     if (!r.ok) return tooMany(r.retryAfter);
   }
   if (pathname === "/api/payments/upi-notify") {

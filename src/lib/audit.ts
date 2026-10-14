@@ -7,6 +7,7 @@ export type AuditAction =
   | "payment_review_requested"
   | "payment_rejected"
   | "payment_event_dismissed"
+  | "order_cancelled"
   | "admin_login"
   | "admin_login_failed"
   | "admin_logout"

@@ -13,6 +13,7 @@ import { POST as bridge } from "@/app/api/payments/upi-notify/route";
 import { POST as submitUtr } from "@/app/api/orders/utr/route";
 import { POST as createOrder } from "@/app/api/orders/route";
 import { GET as verify } from "@/app/api/orders/verify/route";
+import { POST as cancelOrder } from "@/app/api/orders/cancel/route";
 import { POST as decide } from "@/app/api/admin/orders/[id]/payment/route";
 import { POST as resolveEvent } from "@/app/api/admin/payments/events/[id]/route";
 
@@ -154,6 +155,29 @@ describe("order status", () => {
     const body = await res.json();
     expect(body.order.paymentStatus).toBe("failed");
     expect(body.order.payment).toBeNull();
+  });
+});
+
+describe("customer cancel", () => {
+  const url = "https://kamalseller.com/api/orders/cancel";
+  it("cancels only an unpaid order with no reported payment", async () => {
+    db.fake.queue("orders", { data: { id: "row-1" } });
+    const res = await cancelOrder(jsonRequest(url, { orderNumber: order.order_number }));
+    expect(res.status).toBe(200);
+    const [update] = db.fake.on("orders");
+    expect(update.calls[0][1]).toMatchObject({ payment_status: "failed" });
+    expect(update.has("eq", "payment_status", "pending")).toBe(true);
+    expect(update.has("is", "customer_utr", null)).toBe(true);
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "order_cancelled" }));
+  });
+  it.each([
+    [{ payment_status: "paid", customer_utr: null }, "already paid"],
+    [{ payment_status: "pending", customer_utr: "412345678901" }, "checking the payment"],
+  ])("refuses to cancel %j", async (state, message) => {
+    db.fake.queue("orders", { data: null }, { data: state });
+    const res = await cancelOrder(jsonRequest(url, { orderNumber: order.order_number }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain(message);
   });
 });
 
