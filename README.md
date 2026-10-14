@@ -59,9 +59,13 @@ Every order is paid to the merchant UPI ID in `src/lib/business.ts`
    (₹30 becomes e.g. ₹29.37). A partial unique index stops two open orders sharing an
    amount, so the amount alone tells us which order a payment belongs to. Orders above
    ₹1,00,000 are refused (the usual UPI per-payment limit).
-2. **Pay.** On Android the customer taps "Pay with UPI app" (system app chooser) or a
-   Google Pay / PhonePe / Paytm button; on iPhone, the app buttons; on a computer, a QR
-   code. Every option fills in the payee, exact amount and Order ID.
+2. **Pay.** The checkout shows a QR code with the payee, exact amount and Order ID.
+   On a computer the customer scans it with their phone. On a phone they save it
+   (Save QR to gallery, or a screenshot) and use *Scan → choose from gallery* in any UPI
+   app. The website never opens a UPI app directly: our Paytm merchant UPI ID
+   (`paytm.s…@pty`) accepts scanned payments but rejects ones started by a website
+   ("Receiver's UPI ID or VPA is not available", money not debited). One-tap app
+   payments would need a Paytm payment-gateway account.
 3. **Automatic confirmation.** A phone signed in to Paytm for Business forwards each
    "payment received" notification to `/api/payments/upi-notify`. The server reads the
    amount (and UTR when present), marks the matching order paid, adds it to the recharge

@@ -10,20 +10,6 @@ describe("buildUpiLink", () => {
       "upi://pay?pa=paytm.s2sovgg@pty&pn=Kamal%20Seller&am=29.37&cu=INR&tn=IMO-ABCDE12345"
     );
   });
-  it("sends the standard upi://pay payload to a named app on Android", () => {
-    const generic = buildUpiLink(request);
-    const query = generic.slice("upi://pay?".length);
-    expect(buildUpiLink(request, "gpay", "android")).toBe(
-      `intent://pay?${query}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`
-    );
-    expect(buildUpiLink(request, "phonepe", "android")).toContain(`?${query}#Intent;scheme=upi;package=com.phonepe.app;end`);
-    expect(buildUpiLink(request, "paytm", "android")).toContain(`?${query}#Intent;scheme=upi;package=net.one97.paytm;end`);
-  });
-  it("uses each app's own scheme on iPhone", () => {
-    expect(buildUpiLink(request, "gpay", "ios")).toMatch(/^gpay:\/\/upi\/pay\?pa=paytm\.s2sovgg@pty&/);
-    expect(buildUpiLink(request, "phonepe", "ios")).toMatch(/^phonepe:\/\/pay\?pa=/);
-    expect(buildUpiLink(request, "paytm", "ios")).toMatch(/^paytmmp:\/\/pay\?pa=/);
-  });
   it("matches the link format verified with real payments", () => {
     expect(buildUpiLink({ ...request, payeeName: "Kamal Srinivasan", amountPaise: 100, note: "IMO-TEST000001" })).toBe(
       "upi://pay?pa=paytm.s2sovgg@pty&pn=Kamal%20Srinivasan&am=1.00&cu=INR&tn=IMO-TEST000001"

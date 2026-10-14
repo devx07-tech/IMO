@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import QRCode from "qrcode";
-import { Copy, Loader2, ShieldCheck, Smartphone } from "lucide-react";
+import { Copy, Download, Loader2, ShieldCheck } from "lucide-react";
 import { BUSINESS } from "@/lib/business";
 import { buildUpiLink, formatPaise } from "@/lib/upi";
 import { PaymentAppIcon, type PaymentAppIconName } from "./PaymentAppIcon";
@@ -34,7 +34,7 @@ function useSecondsLeft(expiresAt: string | null): number | null {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
 }
 
-const APP_BUTTONS: { app: PaymentAppIconName; label: string }[] = [
+const APP_LOGOS: { app: PaymentAppIconName; label: string }[] = [
   { app: "gpay", label: "Google Pay" },
   { app: "phonepe", label: "PhonePe" },
   { app: "paytm", label: "Paytm" },
@@ -52,28 +52,27 @@ export function UpiPaymentPanel({
   onCancelOrder: () => Promise<string | null>;
 }) {
   const device = useDevice();
-  const [showQr, setShowQr] = useState(false);
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState("");
   const secondsLeft = useSecondsLeft(payment.expiresAt);
   const amount = formatPaise(payment.amountPaise);
-  const request = {
+  // Our Paytm merchant UPI ID accepts scanned payments but rejects ones started
+  // by a website opening a UPI app, so every payment goes through this QR. On a
+  // single phone the customer saves it and scans it from the gallery.
+  const qrLink = buildUpiLink({
     vpa: BUSINESS.upiId,
     payeeName: BUSINESS.upiPayeeName,
     amountPaise: payment.amountPaise,
     note: payment.orderNumber,
-  };
-  const genericLink = buildUpiLink(request);
-  const qrVisible = device === "desktop" || showQr;
+  });
 
   useEffect(() => {
-    if (!qrVisible) return;
     let active = true;
-    QRCode.toDataURL(genericLink, { margin: 1, width: 220, errorCorrectionLevel: "M" })
+    QRCode.toDataURL(qrLink, { margin: 3, width: 560, errorCorrectionLevel: "M" })
       .then((url) => { if (active) setQr(url); })
       .catch(() => { if (active) setQr(null); });
     return () => { active = false; };
-  }, [genericLink, qrVisible]);
+  }, [qrLink]);
 
   const copy = async (label: string, value: string) => {
     try { await navigator.clipboard.writeText(value); setCopied(label); setTimeout(() => setCopied(""), 1500); }
@@ -82,6 +81,7 @@ export function UpiPaymentPanel({
 
   const minutes = secondsLeft === null ? null : Math.floor(secondsLeft / 60);
   const seconds = secondsLeft === null ? null : String(secondsLeft % 60).padStart(2, "0");
+  const onPhone = device !== "desktop";
 
   return (
     <div>
@@ -96,43 +96,40 @@ export function UpiPaymentPanel({
         </p>
       </div>
 
-      {device !== "desktop" && (
-        <div className="mt-5 space-y-2">
-          {/* Generic upi:// link: opens any installed UPI app (Android shows a chooser). */}
-          <a href={genericLink} className="flex w-full flex-col items-center justify-center rounded-button bg-accent px-4 py-3 text-white hover:bg-accent-dark">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Smartphone className="h-4 w-4" aria-hidden="true" />
-              Pay ₹{amount} with any UPI app
-            </span>
-            <span className="mt-0.5 text-[11px] text-white/80">BHIM, CRED, Amazon Pay, bank apps and more</span>
+      <div className="mt-4 flex flex-col items-center">
+        {qr ? (
+          // eslint-disable-next-line @next/next/no-img-element -- generated data URL
+          <img src={qr} alt={`UPI QR code to pay ₹${amount}`} width={200} height={200} className="rounded-input border border-border bg-white" />
+        ) : (
+          <div className="flex h-[200px] w-[200px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted" aria-hidden="true" /></div>
+        )}
+        {onPhone && device === "android" && qr && (
+          <a href={qr} download={`pay-${amount}-${payment.orderNumber}.png`}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-button bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-dark">
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Save QR to gallery
           </a>
-          <p className="pt-1 text-center text-xs text-muted">Or open directly</p>
-          <div className="grid grid-cols-3 gap-2">
-            {APP_BUTTONS.map(({ app, label }) => (
-              <a key={app} href={buildUpiLink(request, app, device === "ios" ? "ios" : "android")} aria-label={`Pay with ${label}`}
-                className="flex flex-col items-center gap-1 rounded-button border border-border-strong px-2 py-2.5 text-center text-xs font-semibold text-foreground hover:border-accent hover:text-accent">
-                <PaymentAppIcon app={app} className="h-6 w-auto max-w-full object-contain" />
-                {label}
-              </a>
-            ))}
-          </div>
-          <button type="button" onClick={() => setShowQr((value) => !value)} className="w-full text-xs font-medium text-accent hover:underline">
-            {showQr ? "Hide QR code" : "Paying from another phone? Show QR code"}
-          </button>
-        </div>
+        )}
+      </div>
+
+      {onPhone ? (
+        <ol className="mt-4 space-y-2 rounded-input bg-background px-4 py-3 text-xs text-foreground">
+          <li><strong>1.</strong> {device === "ios"
+            ? "Press and hold the QR code and choose Save to Photos, or take a screenshot."
+            : "Tap Save QR to gallery, or take a screenshot."}</li>
+          <li><strong>2.</strong> Open your UPI app, tap <strong>Scan</strong>, then pick the saved QR from your gallery.</li>
+          <li><strong>3.</strong> Pay ₹{amount}. Come back here; this screen updates by itself.</li>
+        </ol>
+      ) : (
+        <p className="mt-2 text-center text-xs text-muted">Scan with any UPI app on your phone. The amount is filled in for you.</p>
       )}
 
-      {qrVisible && (
-        <div className="mt-4 flex flex-col items-center">
-          {qr ? (
-            // eslint-disable-next-line @next/next/no-img-element -- generated data URL
-            <img src={qr} alt={`UPI QR code to pay ₹${amount}`} width={200} height={200} className="rounded-input border border-border bg-white p-2" />
-          ) : (
-            <div className="flex h-[200px] w-[200px] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted" aria-hidden="true" /></div>
-          )}
-          <p className="mt-2 text-xs text-muted">Scan with any UPI app. The amount is filled in for you.</p>
-        </div>
-      )}
+      <div className="mt-3 flex items-center justify-center gap-4" aria-label="Works with any UPI app">
+        {APP_LOGOS.map(({ app, label }) => (
+          <span key={app} title={label} className="inline-flex"><PaymentAppIcon app={app} className="h-5 w-auto object-contain" /></span>
+        ))}
+        <span className="text-xs text-muted">+ any UPI app</span>
+      </div>
 
       <div className="mt-4 flex items-center justify-center gap-4 text-xs">
         <button type="button" onClick={() => void copy("upi", BUSINESS.upiId)} className="inline-flex items-center gap-1 text-muted hover:text-foreground">
