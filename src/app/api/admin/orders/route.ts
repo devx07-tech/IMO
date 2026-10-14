@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (search) {
-    // Also matches a Razorpay payment id, or the customer's WhatsApp number.
+    // Also matches a payment id or gateway UTR, or the customer's WhatsApp number.
     query = query.or(
       `order_number.ilike.%${search}%,imo_profile_id.ilike.%${search}%,provider_payment_id.eq.${search}` +
         (SEARCH_PHONE_RE.test(search) ? `,customer_phone.eq.${search}` : "") +

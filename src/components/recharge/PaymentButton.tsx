@@ -35,7 +35,7 @@ export function PaymentButton({ flowState }: PaymentButtonProps) {
       </button>
 
       <p className="mt-2.5 text-center text-xs text-muted">
-        Secure payments by Razorpay · UPI, cards, net banking
+        Secure UPI payments · Google Pay, PhonePe, Paytm and more
       </p>
     </div>
   );

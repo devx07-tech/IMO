@@ -15,6 +15,8 @@ export const BUSINESS = {
   },
   address:
     "S/O Srinivasan, No 19/22, Patchaiyan Kadu, Vedaranyam Taluka, Maraignanallur, Nagapattinam, Tamil Nadu 614810, India",
+  // 10-digit mobile; also sent to the payment gateway when the customer gave none.
+  phone: "6382371168",
   whatsappDisplay: "+91 63823 71168",
   whatsappLink: "https://wa.me/916382371168",
   imoSupportLink: "https://call.imo.im/kamalseller",

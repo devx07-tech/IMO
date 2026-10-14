@@ -1,8 +1,8 @@
 # IMO Recharge
 
 Customer site and admin console for IMO credit recharges, built with Next.js 16
-(App Router) and Supabase (Postgres). Customers pay by UPI directly to Kamal's own UPI
-IDs (default), or through Razorpay once a Razorpay account in Kamal's name is approved.
+(App Router) and Supabase (Postgres). Customers pay by UPI through the dghost UPI gateway
+(pay.dghost.in, default), directly to Kamal's own UPI IDs, or through Razorpay.
 
 - **Customer site** (`/`): enter IMO ID, pick a package, pay, and look up purchase history
   by IMO ID, mobile number or Order ID.
@@ -48,7 +48,8 @@ reach the browser.
 | `NEXT_PUBLIC_SUPABASE_URL`  | Supabase project URL                               |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose to the client.           |
 | `ADMIN_SESSION_SECRET`      | ≥ 32 random chars. Rotating it signs all admins out |
-| `PAYMENT_MODE`              | `upi` (default) or `razorpay` |
+| `PAYMENT_MODE`              | `dghost` (default), `upi` or `razorpay` |
+| `DGHOST_USER_TOKEN`         | Server-only dghost API token (gateway dashboard → Developers) |
 | `UPI_BRIDGE_SECRET`         | ≥ 32 random chars. The payment phone sends it to confirm UPI payments |
 | `RAZORPAY_KEY_ID`           | Razorpay key id (`rzp_test_…` or `rzp_live_…`); public |
 | `RAZORPAY_KEY_SECRET`       | Server-only Razorpay key secret |
@@ -58,9 +59,33 @@ reach the browser.
 
 ## Payments
 
-`PAYMENT_MODE` picks the checkout for new orders: `upi` (default) or `razorpay`.
+`PAYMENT_MODE` picks the checkout for new orders: `dghost` (default), `upi` or `razorpay`.
+Orders already open keep the checkout they were created with.
 
-### Direct UPI (default)
+### UPI gateway (default, pay.dghost.in)
+
+1. **Checkout.** `POST /api/orders` saves the order (exact package price) and creates a
+   gateway order with the same Order ID, a 30-minute payment window and
+   `redirect_url = https://kamalseller.com/?order=<Order ID>`. The browser goes to the
+   gateway's payment page; its link is kept in `provider_order_id` so "Pay now" reopens it.
+   The gateway requires a mobile number: the customer's WhatsApp number if given, otherwise
+   `BUSINESS.phone`.
+2. **Confirmation.** Only the gateway's `check-order-status` API is trusted: `SUCCESS` for
+   this Order ID and the exact amount. It is asked when the customer comes back
+   (`/api/orders/verify?sync=1`) and whenever the webhook (`/api/webhooks/dghost`) arrives;
+   the webhook isn't signed, so its body is only a trigger. The UTR is stored as the payment
+   id, so one UTR can pay only one order. A reported failure closes the order; a later
+   success still confirms it.
+
+Setup:
+
+1. Gateway dashboard → **Developers**: copy the API token into `DGHOST_USER_TOKEN` in Vercel
+   (and `.env.local`). Don't commit it.
+2. Set **Webhook URL** to `https://kamalseller.com/api/webhooks/dghost`.
+3. Redeploy, check **Admin → Payments**, then pay a small live order and check it turns Paid
+   with a Telegram alert.
+
+### Direct UPI (when `PAYMENT_MODE=upi`)
 
 Money goes straight to Kamal's own UPI IDs, configured in `src/lib/business.ts`
 (`BUSINESS.upi`):
@@ -122,7 +147,7 @@ Use Kamal's phone (it receives the ICICI SMS) or a phone with the same SIM, kept
    checkout screen can also ask Razorpay directly (`/api/orders/verify?sync=1`). Confirmation
    is idempotent and one payment can't pay two orders.
 
-### After payment (both modes)
+### After payment (all modes)
 
 The order enters the recharge queue and Telegram gets the alert (IMO ID, diamonds, amount,
 customer WhatsApp). The admin credits the diamonds in IMO, marks the order completed and taps

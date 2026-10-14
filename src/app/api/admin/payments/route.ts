@@ -6,6 +6,7 @@ import type { PaymentStatus } from "@/lib/db-types";
 import { activePaymentMode, UPI_PROVIDER } from "@/lib/payment-provider";
 import { bridgeConfigured, bridgeLastSeen } from "@/lib/upi-payments";
 import { razorpayConfigured, razorpayMode } from "@/lib/razorpay";
+import { gatewayConfigured } from "@/lib/dghost";
 
 const ORDER_FIELDS =
   "id, order_number, imo_profile_id, credits, quantity, amount, customer_phone, payment_provider, payment_status, recharge_status, provider_payment_id, customer_utr, customer_utr_at, expires_at, paid_at, created_at";
@@ -42,6 +43,10 @@ export async function GET() {
       bridgeSecretConfigured: bridgeConfigured(),
       bridgeLastSeen: await bridgeLastSeen(),
       bridgeUrl: `${siteUrl}/api/payments/upi-notify`,
+    },
+    gateway: {
+      tokenConfigured: gatewayConfigured(),
+      webhookUrl: `${siteUrl}/api/webhooks/dghost`,
     },
     razorpay: {
       keysConfigured: razorpayConfigured(),

@@ -45,8 +45,8 @@ export default function TermsPage() {
             <p>
               All prices are in Indian Rupees (₹). When you pay by UPI directly to our UPI account,
               each order asks for a unique amount up to ₹0.99 below the package price so we can
-              identify your payment; please pay exactly the amount shown, within 30 minutes. Where
-              Razorpay checkout is offered, payments are processed securely by Razorpay. Prices may
+              identify your payment; please pay exactly the amount shown, within 30 minutes. When you pay
+              through our UPI payment gateway or Razorpay, the payment is processed by that gateway. Prices may
               change, but the amount shown when you pay is the amount you are charged.
             </p>
           ),

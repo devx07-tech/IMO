@@ -38,10 +38,12 @@ describe("admin payment access and configuration", () => {
     vi.stubEnv("RAZORPAY_KEY_ID", "rzp_live_PUBLICKEY");
     vi.stubEnv("RAZORPAY_KEY_SECRET", "private-key-secret-do-not-return");
     vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "private-webhook-secret-do-not-return");
+    vi.stubEnv("DGHOST_USER_TOKEN", "private-gateway-token-do-not-return");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
     const response = await payments();
     const body = await response.json();
-    expect(body.mode).toBe("upi");
+    expect(body.mode).toBe("dghost");
+    expect(body.gateway).toEqual({ tokenConfigured: true, webhookUrl: "https://kamalseller.com/api/webhooks/dghost" });
     expect(body.upi).toMatchObject({ merchantId: "paytm.s2sovgg@pty", personalId: "kamal6382371168@okicici", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.com/api/payments/upi-notify" });
     expect(body.razorpay).toMatchObject({ keysConfigured: true, keyMode: "live", webhookSecretConfigured: true });
     expect(JSON.stringify(body)).not.toContain("private-");

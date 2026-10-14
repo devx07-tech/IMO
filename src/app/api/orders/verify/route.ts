@@ -3,12 +3,14 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { normalizeOrderNumber } from "@/lib/validation";
 import { publicOrder } from "@/lib/public-order";
 import { razorpayConfigured, razorpayKeyId } from "@/lib/razorpay";
-import { syncOrderWithRazorpay } from "@/lib/payments";
-import { RAZORPAY_PROVIDER, UPI_PROVIDER } from "@/lib/payment-provider";
+import { syncOrderWithGateway, syncOrderWithRazorpay } from "@/lib/payments";
+import { gatewayConfigured } from "@/lib/dghost";
+import { GATEWAY_PROVIDER, RAZORPAY_PROVIDER, UPI_PROVIDER } from "@/lib/payment-provider";
 
 /**
  * Order status for the checkout screen. UPI orders close once their payment
- * window passes; for Razorpay orders `sync=1` also asks Razorpay directly.
+ * window passes; for gateway and Razorpay orders `sync=1` also asks the
+ * provider directly.
  */
 export async function GET(request: NextRequest) {
   const orderNumber = normalizeOrderNumber(request.nextUrl.searchParams.get("orderNumber"));
@@ -45,6 +47,14 @@ export async function GET(request: NextRequest) {
       order = await syncOrderWithRazorpay(order);
     } catch (err) {
       console.error("Razorpay status check failed", err instanceof Error ? err.message : err);
+    }
+  }
+
+  if (order.payment_provider === GATEWAY_PROVIDER && request.nextUrl.searchParams.get("sync") === "1" && gatewayConfigured()) {
+    try {
+      order = await syncOrderWithGateway(order, "redirect");
+    } catch (err) {
+      console.error("Gateway status check failed", err instanceof Error ? err.message : err);
     }
   }
 

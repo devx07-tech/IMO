@@ -1,16 +1,19 @@
 import type { OrderRow } from "./db-types";
-import { RAZORPAY_PROVIDER, UPI_PROVIDER } from "./payment-provider";
+import { GATEWAY_PAYMENT_WINDOW_SECONDS, GATEWAY_PROVIDER, RAZORPAY_PROVIDER, UPI_PROVIDER } from "./payment-provider";
 import { toPaise } from "./money";
 
 /**
  * The order fields a customer may see. An unpaid order also carries what the
- * browser needs to pay it: Razorpay Checkout details (the key id is public) or
- * the exact UPI amount and payment window.
+ * browser needs to pay it: the UPI gateway's payment page, Razorpay Checkout
+ * details (the key id is public) or the exact UPI amount and payment window.
  */
 export function publicOrder(order: OrderRow, razorpayKeyId?: string) {
   const pending = order.payment_status === "pending";
   const razorpay = pending && order.payment_provider === RAZORPAY_PROVIDER && order.provider_order_id && razorpayKeyId;
   const upi = pending && order.payment_provider === UPI_PROVIDER;
+  // The gateway's payment page closes after its window; then a new order is needed.
+  const gateway = pending && order.payment_provider === GATEWAY_PROVIDER && order.provider_order_id &&
+    Date.now() - new Date(order.created_at).getTime() < GATEWAY_PAYMENT_WINDOW_SECONDS * 1000;
   return {
     orderNumber: order.order_number,
     imoProfileId: order.imo_profile_id,
@@ -24,6 +27,7 @@ export function publicOrder(order: OrderRow, razorpayKeyId?: string) {
     checkout: razorpay
       ? { keyId: razorpayKeyId, razorpayOrderId: order.provider_order_id!, amountPaise: toPaise(order.amount) }
       : null,
+    gateway: gateway ? { paymentUrl: order.provider_order_id! } : null,
     payment: upi
       ? { amountPaise: toPaise(order.amount), expiresAt: order.expires_at, utrSubmitted: Boolean(order.customer_utr) }
       : null,

@@ -3,11 +3,15 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { generateUniqueOrderNumber } from "@/lib/order-number";
 import { logAudit } from "@/lib/audit";
-import { activePaymentMode, RAZORPAY_PROVIDER, UPI_PROVIDER } from "@/lib/payment-provider";
+import {
+  activePaymentMode, GATEWAY_PAYMENT_WINDOW_SECONDS, GATEWAY_PROVIDER, RAZORPAY_PROVIDER, UPI_PROVIDER,
+} from "@/lib/payment-provider";
 import { MAX_ORDER_AMOUNT_PAISE, toPaise } from "@/lib/money";
 import { publicOrder } from "@/lib/public-order";
 import { createRazorpayOrder, razorpayConfigured, razorpayKeyId } from "@/lib/razorpay";
 import { expireStaleOrders, insertUpiOrder, PaymentsBusyError } from "@/lib/upi-payments";
+import { createGatewayOrder, gatewayConfigured } from "@/lib/dghost";
+import { BUSINESS } from "@/lib/business";
 
 const createOrderSchema = z.object({
   imoProfileId: z.string().regex(/^\d{6,15}$/, "Enter a valid Profile ID."),
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   const mode = activePaymentMode();
-  if (mode === RAZORPAY_PROVIDER && !razorpayConfigured()) {
+  if ((mode === RAZORPAY_PROVIDER && !razorpayConfigured()) || (mode === GATEWAY_PROVIDER && !gatewayConfigured())) {
     return NextResponse.json({ error: "Payments are temporarily unavailable. Please contact support." }, { status: 503 });
   }
 
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
   }
 
   const amountPaise = toPaise(pkg.price) * quantity;
-  // Razorpay's minimum order is ₹1; UPI orders also take up to 99 paise off.
+  // The gateways' minimum is ₹1; UPI orders also take up to 99 paise off.
   if (amountPaise < 200) {
     return NextResponse.json({ error: "Selected recharge package is not available." }, { status: 400 });
   }
@@ -89,13 +93,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Persist before contacting Razorpay so a webhook can always find the order.
+  // Persist before contacting the gateway so a webhook can always find the order.
   const { data: order, error: insertError } = await supabaseAdmin
     .from("orders")
     .insert({
       ...base,
       amount: amountPaise / 100,
-      payment_provider: RAZORPAY_PROVIDER,
+      payment_provider: mode,
       payment_status: "pending",
       recharge_status: "waiting",
     })
@@ -105,6 +109,42 @@ export async function POST(request: NextRequest) {
   if (insertError || !order) {
     console.error("Failed to persist order", insertError);
     return NextResponse.json({ error: "Could not save your order. Please try again." }, { status: 500 });
+  }
+
+  if (mode === GATEWAY_PROVIDER) {
+    const diamonds = (pkg.credits * quantity).toLocaleString("en-IN");
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? BUSINESS.siteUrl).replace(/\/$/, "");
+    try {
+      const paymentUrl = await createGatewayOrder({
+        orderNumber: base.order_number,
+        amountPaise,
+        // The gateway requires a mobile number; the checkout doesn't ask for one.
+        mobile: whatsapp ?? BUSINESS.phone,
+        // The checkout resumes the order from ?order= and asks the gateway for its status.
+        redirectUrl: `${siteUrl}/?order=${encodeURIComponent(base.order_number)}`,
+        title: BUSINESS.brand,
+        description: `${diamonds} IMO diamonds`,
+        expirySeconds: GATEWAY_PAYMENT_WINDOW_SECONDS,
+      });
+      // provider_order_id holds the gateway's hosted payment page for this order.
+      const { data: linked, error: linkError } = await supabaseAdmin
+        .from("orders")
+        .update({ provider_order_id: paymentUrl, updated_at: new Date().toISOString() })
+        .eq("id", order.id)
+        .select()
+        .single();
+      if (linkError || !linked) throw linkError ?? new Error("Could not link gateway order.");
+
+      await logAudit({ action: "payment_checkout_created", entityType: "order", entityId: order.id,
+        metadata: { provider: GATEWAY_PROVIDER, amount: linked.amount } });
+      return NextResponse.json({ order: publicOrder(linked) });
+    } catch (err) {
+      console.error("Gateway order creation failed", err instanceof Error ? err.message : err);
+      await supabaseAdmin.from("orders")
+        .update({ payment_status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", order.id).eq("payment_status", "pending").is("provider_order_id", null);
+      return NextResponse.json({ error: "Could not start payment. Please try again." }, { status: 502 });
+    }
   }
 
   try {

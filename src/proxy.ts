@@ -14,6 +14,7 @@ export const config = {
     "/api/orders/utr",
     "/api/orders/cancel",
     "/api/payments/upi-notify",
+    "/api/webhooks/dghost",
   ],
 };
 
@@ -54,7 +55,7 @@ export async function proxy(request: NextRequest) {
     if (!r.ok) return tooMany(r.retryAfter);
   }
   if (pathname === "/api/orders/verify") {
-    // The checkout polls this every few seconds while Razorpay confirms a payment.
+    // The checkout polls this every few seconds while a payment is confirmed.
     const r = await rateLimit(`verify:${ip}`, 120, MINUTE);
     if (!r.ok) return tooMany(r.retryAfter);
   }
@@ -75,6 +76,13 @@ export async function proxy(request: NextRequest) {
     const r = await rateLimit(`bridge:${ip}`, 120, MINUTE);
     if (!r.ok) return tooMany(r.retryAfter);
     // Authenticated by its own bearer secret in the route handler.
+    return NextResponse.next();
+  }
+  if (pathname === "/api/webhooks/dghost") {
+    // Each callback triggers a status check with the gateway.
+    const r = await rateLimit(`dghost:${ip}`, 60, MINUTE);
+    if (!r.ok) return tooMany(r.retryAfter);
+    // Public: the route re-checks every callback with the gateway.
     return NextResponse.next();
   }
   if (pathname === "/api/admin/login" && request.method === "POST") {

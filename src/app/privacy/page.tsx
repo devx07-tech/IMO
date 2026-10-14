@@ -33,8 +33,8 @@ const sections: LegalSection[] = [
           status, recharge status, and the date and time of the order.
         </li>
         <li>
-          <strong>Payment information:</strong> you pay by UPI directly to our UPI accounts, or
-          through our payment partner Razorpay where offered. We record the amount, the payment
+          <strong>Payment information:</strong> you pay by UPI through our UPI payment gateway,
+          directly to our UPI accounts, or through Razorpay where offered. We record the amount, the payment
           status, the UPI reference number (UTR) or payment reference, and the payer name your UPI
           app shares with us. We never see or store your UPI PIN,
           card number or bank login.
@@ -78,10 +78,10 @@ const sections: LegalSection[] = [
         <p>We share information only with service providers needed to run the service:</p>
         <ul className="mt-2 list-disc space-y-1.5 pl-5">
           <li>
-            <strong>Your UPI app, the banks, Paytm and (where offered) Razorpay</strong> — they
-            process the payment itself. When Razorpay is used, your order amount and Order ID are
-            sent to it to process the payment, under their own
-            privacy policies. We don&apos;t send them your order details.
+            <strong>Your UPI app, the banks, our UPI payment gateway, Paytm and (where offered)
+            Razorpay</strong> — they process the payment itself. When a payment gateway is used,
+            your order amount, Order ID and (if you gave one) your WhatsApp number are sent to it
+            to process the payment, under their own privacy policies. We don&apos;t send them your IMO ID.
           </li>
           <li>
             <strong>Supabase</strong> — our database and hosting provider, where order records
@@ -114,7 +114,7 @@ const sections: LegalSection[] = [
     body: (
       <p>
         The site runs over encrypted (HTTPS) connections and payment is completed inside your own
-        UPI app or Razorpay&apos;s secure checkout. Order data is stored
+        UPI app or on our payment gateway&apos;s secure checkout page. Order data is stored
         with access restricted to authorised administrators. No online service can guarantee
         absolute security, but we take reasonable steps to protect your information.
       </p>
@@ -126,7 +126,7 @@ const sections: LegalSection[] = [
       <p>
         The public recharge pages do not use advertising or tracking cookies. The administrator
         area uses a session cookie to keep authorised staff signed in. If you pay through
-        Razorpay, it may set its own cookies to process and secure your payment.
+        our payment gateway or Razorpay, it may set its own cookies to process and secure your payment.
       </p>
     ),
   },

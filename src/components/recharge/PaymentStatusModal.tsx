@@ -45,7 +45,7 @@ export function PaymentStatusModal({
         {flowState === "awaiting_payment" && (payment ? (
           <UpiPaymentPanel payment={payment} onSubmitUtr={onSubmitUtr} onCancel={onDone} onCancelOrder={onCancelOrder} />
         ) : (
-          <LoadingState title="Complete your payment" subtitle="Pay in the Razorpay window using UPI, card or net banking." />
+          <LoadingState title="Complete your payment" subtitle="Opening the secure payment page..." />
         ))}
 
         {flowState === "verifying" && (
@@ -107,7 +107,7 @@ export function PaymentStatusModal({
             <p className="mt-1 text-sm text-muted">
               {payment
                 ? "We're matching your UTR with our account."
-                : "Razorpay is still confirming your payment."}{" "}
+                : "The payment gateway is still confirming your payment."}{" "}
               Don&apos;t pay again: your recharge starts as soon as it&apos;s confirmed. Keep your
               Order ID to check the status in Transaction History.
             </p>

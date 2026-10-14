@@ -122,6 +122,7 @@ describe("customer UTR submission", () => {
 });
 
 describe("order creation", () => {
+  beforeEach(() => vi.stubEnv("PAYMENT_MODE", "upi"));
   const url = "https://kamalseller.com/api/orders";
   const body = { imoProfileId: "1234567", packageId: "6f1c1b7e-3c2a-4d8e-9a55-0d6f1d2b7c11", quantity: 1, whatsapp: "9876543210" };
   it("reserves a unique amount 1-99 paise below the package total", async () => {

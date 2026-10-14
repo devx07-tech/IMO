@@ -48,7 +48,7 @@ export default function AdminOrdersPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-foreground">Orders</h1>
-        <p className="text-sm text-muted">All recharge orders, searchable by Order ID, IMO ID, WhatsApp number or Razorpay payment ID.</p>
+        <p className="text-sm text-muted">All recharge orders, searchable by Order ID, IMO ID, WhatsApp number, payment ID or UTR.</p>
         <p className="mt-1 text-xs text-muted">Payment updates refresh every 15 seconds.</p>
       </div>
 

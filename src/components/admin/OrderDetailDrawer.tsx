@@ -6,7 +6,7 @@ import { PaymentStatusBadge, RechargeStatusBadge } from "@/components/recharge/S
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { OrderRow, AuditLogRow, NotificationRow } from "@/lib/db-types";
 import { useAdminData } from "@/lib/use-admin-data";
-import { paymentProviderLabel, UPI_PROVIDER } from "@/lib/payment-provider";
+import { GATEWAY_PROVIDER, paymentProviderLabel, UPI_PROVIDER } from "@/lib/payment-provider";
 import { CustomerWhatsAppButton } from "./CustomerWhatsAppButton";
 
 interface OrderDetailDrawerProps {
@@ -129,7 +129,7 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                 <Row label="Total" value={formatCurrency(order.amount)} strong />
                 <Row label="Payment Provider" value={paymentProviderLabel(order.payment_provider)} />
                 {order.customer_phone && <Row label="Customer WhatsApp" value={`+91 ${order.customer_phone}`} />}
-                {order.provider_order_id && <Row label="Provider Order ID" value={order.provider_order_id} />}
+                {order.provider_order_id && <Row label={order.payment_provider === GATEWAY_PROVIDER ? "Gateway payment page" : "Provider Order ID"} value={order.provider_order_id} />}
                 <Row label="Payment Status" value={<PaymentStatusBadge status={order.payment_status} />} />
                 {order.provider_payment_id && <Row label="Payment reference" value={order.provider_payment_id} />}
                 {order.customer_utr && <Row label="Customer UTR" value={order.customer_utr} />}

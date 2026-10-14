@@ -41,6 +41,24 @@ async function fetchOrder(orderNumber: string, sync = false, signal?: AbortSigna
   return body.order as PublicOrder;
 }
 
+/**
+ * Asks the server (which asks the provider) every 3s, passing each result to
+ * `apply`; true once paid, false once the order is no longer open.
+ */
+async function pollUntilPaid(orderNumber: string, attempts: number, apply: (api: PublicOrder) => boolean,
+  signal?: AbortSignal): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    await sleep(3000);
+    if (signal?.aborted) return false;
+    try {
+      const api = await fetchOrder(orderNumber, true, signal);
+      if (apply(api)) return true;
+      if (api.paymentStatus !== "pending") return false;
+    } catch { /* transient; retry */ }
+  }
+  return false;
+}
+
 function setOrderInUrl(orderNumber: string | null) {
   const url = new URL(window.location.href);
   if (orderNumber) url.searchParams.set("order", orderNumber);
@@ -56,7 +74,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   const [quantity, setQuantity] = useState(1);
   const [flowState, setFlowState] = useState<PaymentFlowState>("idle");
   const [currentOrder, setCurrentOrder] = useState<RechargeOrder | null>(null);
-  // The latest unpaid order, so "Try again" reopens the same Razorpay order.
+  // The latest unpaid order, so "Try again" reopens the same gateway or Razorpay payment.
   const [unpaidOrder, setUnpaidOrder] = useState<PublicOrder | null>(null);
   // An open direct-UPI order: amount and payment window for the payment screen.
   const [payment, setPayment] = useState<UpiPaymentInfo | null>(null);
@@ -68,7 +86,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   /** Records the server's view of the order; returns true once it's paid. */
   const applyOrder = (api: PublicOrder): boolean => {
     setCurrentOrder(toRechargeOrder(api));
-    setUnpaidOrder(api.paymentStatus === "pending" && api.checkout ? api : null);
+    setUnpaidOrder(api.paymentStatus === "pending" && (api.checkout || api.gateway) ? api : null);
     setPayment(api.payment ? { orderNumber: api.orderNumber, ...api.payment } : null);
     return api.paymentStatus === "paid";
   };
@@ -94,6 +112,11 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
         const paid = applyOrder(api);
         if (api.paymentMethod === "upi") {
           setFlowState(upiFlowState(api));
+        } else if (!paid && api.gateway) {
+          // Back from the gateway's payment page: its confirmation can take a few seconds.
+          const confirmed = await pollUntilPaid(orderNumber!, 8, applyOrder, controller.signal);
+          if (controller.signal.aborted) return;
+          setFlowState(confirmed ? "success" : "failed");
         } else {
           setFlowState(paid ? "success" : api.paymentStatus === "pending" ? "failed" : "idle");
           if (!paid && api.paymentStatus !== "pending") setOrderInUrl(null);
@@ -176,16 +199,16 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     } catch { /* fall through to status checks */ }
 
     // The webhook may land a moment later; ask Razorpay directly for up to ~45s.
-    for (let attempt = 0; attempt < 15; attempt++) {
-      await sleep(3000);
-      try {
-        if (applyOrder(await fetchOrder(orderNumber, true))) { setFlowState("success"); return; }
-      } catch { /* transient; retry */ }
-    }
-    setFlowState("pending");
+    setFlowState(await pollUntilPaid(orderNumber, 15, applyOrder) ? "success" : "pending");
   };
 
   const openCheckout = async (order: PublicOrder) => {
+    if (order.gateway) {
+      // The gateway's hosted page; it sends the customer back to ?order=<number>.
+      setFlowState("awaiting_payment");
+      window.location.assign(order.gateway.paymentUrl);
+      return;
+    }
     if (!order.checkout) return;
     paymentHandled.current = false;
     setFailureReason(null);
@@ -246,7 +269,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     // Keep the order in the URL so a reload or coming back from a UPI app resumes it.
     setOrderInUrl(order.orderNumber);
     applyOrder(order);
-    if (order.checkout) await openCheckout(order);
+    if (order.checkout || order.gateway) await openCheckout(order);
     else setFlowState(upiFlowState(order));
   };
 

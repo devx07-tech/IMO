@@ -17,12 +17,13 @@ type PaymentOrder = Pick<OrderRow, "id" | "order_number" | "imo_profile_id" | "c
   "expires_at" | "paid_at" | "created_at">;
 
 interface PaymentOverview {
-  mode: "upi" | "razorpay";
+  mode: "dghost" | "upi" | "razorpay";
   telegramConfigured: boolean;
   upi: {
     payeeName: string; merchantId: string; personalId: string; routes: Record<string, "merchant" | "personal">;
     bridgeSecretConfigured: boolean; bridgeLastSeen: string | null; bridgeUrl: string;
   };
+  gateway: { tokenConfigured: boolean; webhookUrl: string };
   razorpay: { keysConfigured: boolean; keyMode: "test" | "live" | "unconfigured"; webhookSecretConfigured: boolean; webhookUrl: string };
   pending: number; paid: number; failed: number;
   reviewOrders: PaymentOrder[];
@@ -32,6 +33,9 @@ interface PaymentOverview {
 
 // The payment phone sends a heartbeat every 15 minutes; allow some slack.
 const BRIDGE_ONLINE_MS = 20 * 60_000;
+const MODE_LABEL: Record<PaymentOverview["mode"], string> = {
+  dghost: "UPI gateway (pay.dghost.in)", upi: "direct UPI (Kamal's UPI IDs)", razorpay: "Razorpay",
+};
 const ROUTE_LABEL: Record<string, string> = { qr: "Scanned QR", paytm: "Paytm app", gpay: "Google Pay", phonepe: "PhonePe", other: "Other UPI apps" };
 
 async function postJson(url: string, body: unknown) {
@@ -65,13 +69,25 @@ export default function AdminPaymentsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4">
         <div><h1 className="text-xl font-bold text-foreground">Payments</h1>
-          <p className="text-sm text-muted">{data ? `Checkout: ${data.mode === "upi" ? "direct UPI (Kamal's UPI IDs)" : "Razorpay"}. ` : ""}Updates every 15 seconds.</p></div>
+          <p className="text-sm text-muted">{data ? `Checkout: ${MODE_LABEL[data.mode]}. ` : ""}Updates every 15 seconds.</p></div>
         <button type="button" onClick={() => void refresh()} className="rounded-button border border-border-strong px-3 py-2 text-xs font-semibold text-foreground">Refresh</button>
       </div>
       {(error || actionError) && <p role="alert" className="text-sm text-error">{actionError || error}</p>}
       {loading && !data && <Loader2 className="h-5 w-5 animate-spin text-muted" aria-label="Loading payments" />}
       {data && upi && <>
-        {data.mode === "upi" ? (
+        {data.mode === "dghost" ? (
+          <section className="rounded-card bg-surface p-5 shadow-card">
+            <h2 className="text-base font-semibold text-foreground">UPI gateway (pay.dghost.in)</h2>
+            <p className="mt-1 text-sm text-muted">{data.gateway.tokenConfigured
+              ? "Customers pay on the gateway's payment page. Each payment is confirmed by asking the gateway for the order's status when the customer returns, and when the gateway's webhook arrives."
+              : "DGHOST_USER_TOKEN is not set on the server, so checkout is turned off. Add it in Vercel and redeploy."}</p>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <Detail label="API token" value={data.gateway.tokenConfigured ? "Configured" : "Missing"} />
+              <Detail label="Telegram alerts" value={data.telegramConfigured ? "Configured" : "Missing credentials"} />
+              <div className="sm:col-span-2"><Detail label="Webhook URL (paste into the gateway dashboard under Developers → Webhook URL)" value={data.gateway.webhookUrl} /></div>
+            </dl>
+          </section>
+        ) : data.mode === "upi" ? (
           <section className="rounded-card bg-surface p-5 shadow-card">
             <div className="flex items-center gap-2">
               <Smartphone className={bridgeOnline ? "h-5 w-5 text-success" : "h-5 w-5 text-error"} aria-hidden="true" />
