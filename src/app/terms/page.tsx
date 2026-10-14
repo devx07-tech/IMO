@@ -42,10 +42,11 @@ export default function TermsPage() {
           title: "4. Prices and payment",
           body: (
             <p>
-              All prices are in Indian Rupees (₹). UPI checkout and payment confirmation are
-              provided by BaseUPI, with payments sent directly to our UPI account.
-              Prices may change, but the price shown when you pay is the price you
-              are charged.
+              All prices are in Indian Rupees (₹). You pay by UPI directly to our merchant UPI
+              account. To identify your payment, each order asks for a unique amount up to ₹0.99
+              below the package price; please pay exactly the amount shown. An order must be paid
+              within 30 minutes. Prices may change, but the amount shown when you pay is the
+              amount you are charged.
             </p>
           ),
         },

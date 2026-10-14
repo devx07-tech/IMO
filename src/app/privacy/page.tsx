@@ -33,10 +33,10 @@ const sections: LegalSection[] = [
           status, recharge status, and the date and time of the order.
         </li>
         <li>
-          <strong>Payment status information:</strong> payments are processed by our payment
-          partner, BaseUPI. We receive the outcome of the payment (paid, failed or
-          pending) and a reference ID. We never see or store your card number, UPI PIN, or
-          net-banking credentials.
+          <strong>Payment information:</strong> you pay by UPI directly to our merchant UPI
+          account. We record the amount, the payment status and the UPI reference number (UTR),
+          and the payer name your UPI app shares with us. We never see or store your UPI PIN,
+          card number or bank login.
         </li>
         <li>
           <strong>Support messages:</strong> anything you send us through WhatsApp or the IMO
@@ -77,9 +77,9 @@ const sections: LegalSection[] = [
         <p>We share information only with service providers needed to run the service:</p>
         <ul className="mt-2 list-disc space-y-1.5 pl-5">
           <li>
-            <strong>BaseUPI</strong> — to provide UPI checkout and payment confirmation. Your
-            email and order amount are sent to BaseUPI. Their handling of your
-            payment data is governed by their own privacy policy.
+            <strong>Your UPI app and our UPI account provider (Paytm for Business)</strong> — the
+            payment itself is processed by your UPI app, the banks and Paytm under their own
+            privacy policies. We don&apos;t send them your order details.
           </li>
           <li>
             <strong>Supabase</strong> — our database and hosting provider, where order records
@@ -111,7 +111,8 @@ const sections: LegalSection[] = [
     title: "7. Security",
     body: (
       <p>
-        Checkout runs over encrypted (HTTPS) connections through BaseUPI. Order data is stored
+        The site runs over encrypted (HTTPS) connections and payment is completed inside your own
+        UPI app. Order data is stored
         with access restricted to authorised administrators. No online service can guarantee
         absolute security, but we take reasonable steps to protect your information.
       </p>
@@ -122,8 +123,7 @@ const sections: LegalSection[] = [
     body: (
       <p>
         The public recharge pages do not use advertising or tracking cookies. The administrator
-        area uses a session cookie to keep authorised staff signed in. BaseUPI may set its own
-        cookies during checkout to complete and secure your payment.
+        area uses a session cookie to keep authorised staff signed in.
       </p>
     ),
   },

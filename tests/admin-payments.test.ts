@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  query: { select: vi.fn(), eq: vi.fn(), order: vi.fn(), range: vi.fn(), or: vi.fn(), limit: vi.fn(), gte: vi.fn(), lte: vi.fn(), update: vi.fn(), maybeSingle: vi.fn(), then: vi.fn() },
+  query: { select: vi.fn(), eq: vi.fn(), order: vi.fn(), range: vi.fn(), or: vi.fn(), limit: vi.fn(), gte: vi.fn(), lte: vi.fn(), update: vi.fn(), not: vi.fn(), in: vi.fn(), is: vi.fn(), maybeSingle: vi.fn(), then: vi.fn() },
   from: vi.fn(), execute: vi.fn(), auth: vi.fn(), audit: vi.fn(), notify: vi.fn(),
 }));
 vi.mock("@/lib/supabase-admin", () => ({ supabaseAdmin: { from: mocks.from } }));
 vi.mock("@/lib/auth/current-admin", () => ({ requireAdmin: mocks.auth }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
-vi.mock("@/lib/notifications/service", () => ({ sendOrderNotification: mocks.notify }));
+vi.mock("@/lib/notifications/service", () => ({ sendOrderNotification: mocks.notify, sendAdminAlert: vi.fn() }));
 import { GET as listOrders } from "@/app/api/admin/orders/route";
 import { GET as payments } from "@/app/api/admin/payments/route";
 import { GET as dashboard } from "@/app/api/admin/dashboard/route";
@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.auth.mockResolvedValue({ admin: { adminId: "admin-1" } });
   mocks.from.mockReturnValue(mocks.query);
-  for (const method of ["select", "eq", "order", "range", "or", "limit", "gte", "lte", "update"] as const) {
+  for (const method of ["select", "eq", "order", "range", "or", "limit", "gte", "lte", "update", "not", "in", "is"] as const) {
     mocks.query[method].mockReturnValue(mocks.query);
   }
   mocks.execute.mockResolvedValue({ data: [], count: 0, error: null });
@@ -34,21 +34,18 @@ describe("admin payment access and configuration", () => {
     expect(mocks.from).not.toHaveBeenCalled();
   });
   it("reports readiness without returning secret values", async () => {
-    vi.stubEnv("BASEUPI_SECRET_KEY", "private-key-do-not-return");
-    vi.stubEnv("BASEUPI_WEBHOOK_SECRET", "private-webhook-do-not-return");
+    vi.stubEnv("UPI_BRIDGE_SECRET", "private-bridge-secret-do-not-return-0123456789");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
     const response = await payments();
     const body = await response.json();
-    expect(body.configuration).toMatchObject({ apiKeyConfigured: true, webhookSecretConfigured: true, expectedReceiver: "kamal6382371168@okicici", webhookUrl: "https://kamalseller.com/api/webhooks/baseupi" });
-    expect(JSON.stringify(body)).not.toContain("private-key");
-    expect(JSON.stringify(body)).not.toContain("private-webhook");
-    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "baseupi");
+    expect(body.configuration).toMatchObject({ upiId: "paytm.s2sovgg@pty", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.com/api/payments/upi-notify" });
+    expect(JSON.stringify(body)).not.toContain("private-bridge");
+    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "upi");
   });
   it("reports missing credentials and database failures accurately", async () => {
-    vi.stubEnv("BASEUPI_SECRET_KEY", ""); vi.stubEnv("BASEUPI_WEBHOOK_SECRET", "");
+    vi.stubEnv("UPI_BRIDGE_SECRET", "");
     const body = await (await payments()).json();
-    expect(body.configuration.apiKeyConfigured).toBe(false);
-    expect(body.configuration.webhookSecretConfigured).toBe(false);
+    expect(body.configuration.bridgeSecretConfigured).toBe(false);
     mocks.execute.mockResolvedValueOnce({ data: null, error: { message: "unavailable" } });
     expect((await payments()).status).toBe(500);
   });
@@ -63,10 +60,9 @@ describe("admin order and revenue correlation", () => {
     expect(mocks.query.range).toHaveBeenCalledWith(500, 999);
   });
   it.each(["waiting_recharge", "processing", "completed", "failed_recharge"])("restricts %s to confirmed paid orders", async (filter) => {
-    const res = await listOrders(new NextRequest(`https://kamalseller.com/api/admin/orders?filter=${filter}&provider=baseupi&offset=50&limit=50`));
+    const res = await listOrders(new NextRequest(`https://kamalseller.com/api/admin/orders?filter=${filter}&offset=50&limit=50`));
     expect(res.status).toBe(200);
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "paid");
-    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "baseupi");
     expect(mocks.query.range).toHaveBeenCalledWith(50, 99);
   });
   it("keeps pending payment searches outside the recharge queue", async () => {
@@ -74,9 +70,10 @@ describe("admin order and revenue correlation", () => {
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "pending");
     expect(mocks.query.eq).not.toHaveBeenCalledWith("payment_status", "paid");
   });
-  it("rejects an unknown payment provider", async () => {
-    expect((await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?provider=unknown"))).status).toBe(400);
-    expect(mocks.from).not.toHaveBeenCalled();
+  it("finds orders by a 12-digit UTR", async () => {
+    await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?search=412345678901"));
+    expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("provider_payment_id.eq.412345678901"));
+    expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("customer_utr.eq.412345678901"));
   });
   it("counts payments on the confirmation day in India time", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-14T20:00:00Z"));
@@ -91,13 +88,13 @@ describe("recharge payment guard", () => {
   const request = () => new NextRequest("https://kamalseller.com/api/admin/orders/row-1/recharge", {
     method: "POST", body: JSON.stringify({ action: "start" }), headers: { "Content-Type": "application/json" },
   });
-  it("blocks recharge of an unconfirmed BaseUPI order", async () => {
-    mocks.query.maybeSingle.mockResolvedValueOnce({ data: { id: "row-1", payment_provider: "baseupi", payment_status: "pending", recharge_status: "waiting" }, error: null });
+  it("blocks recharge of an unconfirmed UPI order", async () => {
+    mocks.query.maybeSingle.mockResolvedValueOnce({ data: { id: "row-1", payment_provider: "upi", payment_status: "pending", recharge_status: "waiting" }, error: null });
     expect((await recharge(request(), context)).status).toBe(400);
     expect(mocks.query.update).not.toHaveBeenCalled();
   });
   it("rechecks payment state on the conditional recharge update", async () => {
-    const order = { id: "row-1", payment_provider: "baseupi", payment_status: "paid", recharge_status: "waiting" };
+    const order = { id: "row-1", payment_provider: "upi", payment_status: "paid", recharge_status: "waiting" };
     mocks.query.maybeSingle.mockResolvedValueOnce({ data: order, error: null }).mockResolvedValueOnce({ data: { ...order, recharge_status: "processing" }, error: null });
     expect((await recharge(request(), context)).status).toBe(200);
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "paid");

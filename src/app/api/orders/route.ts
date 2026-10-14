@@ -2,18 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { generateUniqueOrderNumber } from "@/lib/order-number";
-import { baseupiConfigured, createBaseupiOrder } from "@/lib/baseupi";
 import { logAudit } from "@/lib/audit";
+import { expireStaleOrders, insertUpiOrder, PaymentsBusyError } from "@/lib/upi-payments";
+import { MAX_UPI_AMOUNT_PAISE, toPaise } from "@/lib/upi";
+import { publicOrder } from "@/lib/public-order";
 
 const createOrderSchema = z.object({
   imoProfileId: z.string().regex(/^\d{6,15}$/, "Enter a valid Profile ID."),
   packageId: z.string().uuid(),
   quantity: z.number().int().min(1).max(10),
-  customerEmail: z.string().trim().email().max(254),
-  customerPhone: z
-    .string()
-    .regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number.")
-    .optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -26,10 +23,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!baseupiConfigured()) {
-    return NextResponse.json({ error: "Payments are temporarily unavailable. Please contact support." }, { status: 503 });
-  }
-  const { imoProfileId, packageId, quantity, customerEmail } = parsed.data;
+  const { imoProfileId, packageId, quantity } = parsed.data;
 
   const { data: pkg, error: pkgError } = await supabaseAdmin
     .from("packages")
@@ -45,52 +39,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const amount = Math.round(Number(pkg.price) * 100) * quantity / 100;
-  const orderNumber = await generateUniqueOrderNumber();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const totalPaise = toPaise(pkg.price) * quantity;
+  if (totalPaise > MAX_UPI_AMOUNT_PAISE) {
+    return NextResponse.json(
+      { error: "UPI allows up to ₹1,00,000 per payment. Please reduce the quantity." },
+      { status: 400 }
+    );
+  }
 
-  // Persist before contacting the provider so an early webhook can find the order.
-  const { data: order, error: insertError } = await supabaseAdmin
-    .from("orders")
-    .insert({
-      order_number: orderNumber,
+  try {
+    await expireStaleOrders();
+    const order = await insertUpiOrder({
+      order_number: await generateUniqueOrderNumber(),
       imo_profile_id: imoProfileId,
       package_id: pkg.id,
       credits: pkg.credits,
       quantity,
       unit_price: pkg.price,
-      amount,
-      payment_provider: "baseupi",
-      payment_status: "pending",
-      recharge_status: "waiting",
-    })
-    .select()
-    .single();
+    }, totalPaise);
 
-  if (insertError || !order) {
-    console.error("Failed to persist payment order", insertError);
+    await logAudit({ action: "payment_checkout_created", entityType: "order", entityId: order.id,
+      metadata: { provider: order.payment_provider, amount: order.amount } });
+    return NextResponse.json({ order: publicOrder(order) });
+  } catch (err) {
+    if (err instanceof PaymentsBusyError) {
+      return NextResponse.json(
+        { error: "Many payments are in progress right now. Please try again in a few minutes." },
+        { status: 503 }
+      );
+    }
+    console.error("Failed to create UPI order", err);
     return NextResponse.json(
       { error: "Could not save your order. Please try again." },
       { status: 500 }
     );
-  }
-
-  try {
-    const gatewayOrder = await createBaseupiOrder({
-      orderNumber, unitPrice: Number(pkg.price), quantity, credits: pkg.credits,
-      customerEmail, returnUrl: `${siteUrl}/?order=${orderNumber}`,
-    });
-    const { error: linkError } = await supabaseAdmin.from("orders")
-      .update({ provider_order_id: gatewayOrder.publicOrderId }).eq("id", order.id);
-    if (linkError) throw new Error("Could not link provider order.");
-    await logAudit({ action: "payment_checkout_created", entityType: "order", entityId: order.id,
-      metadata: { provider: "baseupi", providerOrderId: gatewayOrder.publicOrderId, amount } });
-    return NextResponse.json({ orderNumber, checkoutUrl: gatewayOrder.checkoutUrl });
-  } catch (err) {
-    // Leave ambiguous gateway failures pending: a delayed signed webhook may still arrive.
-    console.error("BaseUPI order creation failed", err instanceof Error ? err.name : "Unknown error");
-    await logAudit({ action: "payment_checkout_failed", entityType: "order", entityId: order.id,
-      metadata: { provider: "baseupi" } });
-    return NextResponse.json({ error: "Could not start payment. Please try again.", orderNumber }, { status: 502 });
   }
 }

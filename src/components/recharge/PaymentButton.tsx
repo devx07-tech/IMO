@@ -35,7 +35,7 @@ export function PaymentButton({ flowState }: PaymentButtonProps) {
       </button>
 
       <p className="mt-2.5 text-center text-xs text-muted">
-        UPI payment powered by BaseUPI
+        Pay securely with any UPI app · Google Pay, PhonePe, Paytm
       </p>
     </div>
   );

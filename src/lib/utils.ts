@@ -6,7 +6,10 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number): string {
-  return `₹${amount.toLocaleString("en-IN")}`;
+  // UPI order amounts carry paise (e.g. ₹29.37), so keep both decimals when present.
+  const value = Number(amount);
+  const fractionDigits = Number.isInteger(value) ? 0 : 2;
+  return `₹${value.toLocaleString("en-IN", { minimumFractionDigits: fractionDigits, maximumFractionDigits: 2 })}`;
 }
 
 export function formatDateTime(iso: string): string {

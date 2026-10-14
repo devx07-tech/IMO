@@ -2,21 +2,17 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
-// Cashfree's checkout SDK loads from sdk.cashfree.com and opens payment pages
-// and frames on *.cashfree.com; it's allowed now so the gateway works when wired up.
-const CASHFREE = "https://*.cashfree.com";
-
 const contentSecurityPolicy = [
   "default-src 'self'",
   // Next.js injects inline bootstrap scripts; dev mode also needs eval for HMR.
-  `script-src 'self' 'unsafe-inline' ${isDev ? "'unsafe-eval' " : ""}https://sdk.cashfree.com`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
   "media-src 'self'",
-  `connect-src 'self' ${CASHFREE}`,
-  `frame-src ${CASHFREE}`,
-  `form-action 'self' ${CASHFREE}`,
+  "connect-src 'self'",
+  "frame-src 'none'",
+  "form-action 'self'",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "object-src 'none'",

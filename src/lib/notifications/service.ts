@@ -1,10 +1,11 @@
 import "server-only";
 import { supabaseAdmin } from "../supabase-admin";
-import type { OrderRow } from "../db-types";
+import type { NotificationChannel, OrderRow } from "../db-types";
 import { TelegramProvider } from "./telegram-provider";
 import { FutureWhatsAppProvider } from "./whatsapp-provider";
 import type { NotificationEvent, NotificationProvider } from "./types";
 import { paymentProviderLabel } from "../payment-provider";
+import { BUSINESS } from "../business";
 
 const providers: Record<string, NotificationProvider> = {
   telegram: new TelegramProvider(),
@@ -19,7 +20,17 @@ function formatTimestamp(iso: string): string {
   });
 }
 
-function buildMessage(event: NotificationEvent, order: OrderRow, timestampIso: string): string {
+function adminUrl(path: string): string {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? BUSINESS.siteUrl;
+  return `${siteUrl.replace(/\/$/, "")}${path}`;
+}
+
+function buildMessage(
+  event: NotificationEvent,
+  order: OrderRow,
+  timestampIso: string,
+  details: string[] = []
+): string {
   const recharge = `${order.credits.toLocaleString("en-IN")} Credits`;
 
   if (event === "order_paid") {
@@ -30,11 +41,30 @@ function buildMessage(event: NotificationEvent, order: OrderRow, timestampIso: s
       `IMO ID: ${order.imo_profile_id}`,
       `Recharge: ${recharge}`,
       `Quantity: ${order.quantity}`,
-      `Amount: ₹${order.amount}`,
+      `Amount: ₹${Number(order.amount).toFixed(2)}`,
       `Payment: ${order.payment_status.toUpperCase()}`,
       `Provider: ${paymentProviderLabel(order.payment_provider)}`,
-      ...(order.provider_order_id ? [`Provider order: ${order.provider_order_id}`] : []),
+      ...(order.provider_payment_id ? [`UTR: ${order.provider_payment_id}`] : []),
+      ...details,
       `Recharge: ${order.recharge_status.toUpperCase()}`,
+      "",
+      formatTimestamp(timestampIso),
+    ].join("\n");
+  }
+
+  if (event === "payment_review") {
+    return [
+      "PAYMENT NEEDS REVIEW",
+      "",
+      `Order: ${order.order_number}`,
+      `IMO ID: ${order.imo_profile_id}`,
+      `Recharge: ${recharge} × ${order.quantity}`,
+      `Expected amount: ₹${Number(order.amount).toFixed(2)}`,
+      `Customer UTR: ${order.customer_utr ?? "-"}`,
+      ...details,
+      "",
+      "Check this UTR and amount in Paytm for Business before approving.",
+      adminUrl("/admin/payments"),
       "",
       formatTimestamp(timestampIso),
     ].join("\n");
@@ -53,22 +83,22 @@ function buildMessage(event: NotificationEvent, order: OrderRow, timestampIso: s
 }
 
 /**
- * Sends an admin notification for an order event. Writes a row to the
- * notifications table either way. Never throws — a Telegram/WhatsApp
+ * Records and sends one admin notification. Never throws — a Telegram/WhatsApp
  * failure must never roll back or block the order/payment flow.
  */
-export async function sendOrderNotification(
-  event: NotificationEvent,
-  order: OrderRow,
-  channel: "telegram" | "whatsapp" = "telegram"
-): Promise<void> {
-  const recipient =
-    channel === "telegram" ? process.env.TELEGRAM_CHAT_ID : undefined;
+async function deliver(params: {
+  channel: NotificationChannel;
+  event: NotificationEvent;
+  orderId: string | null;
+  message: (createdAt: string) => string;
+}): Promise<void> {
+  const { channel, event, orderId } = params;
+  const recipient = channel === "telegram" ? process.env.TELEGRAM_CHAT_ID : undefined;
 
   const { data: notification, error: insertError } = await supabaseAdmin
     .from("notifications")
     .insert({
-      order_id: order.id,
+      order_id: orderId,
       channel,
       event,
       recipient: recipient ?? "unconfigured",
@@ -83,11 +113,14 @@ export async function sendOrderNotification(
     return;
   }
 
+  const message = params.message(notification.created_at);
+
   if (!recipient) {
     await supabaseAdmin
       .from("notifications")
       .update({
         status: "failed",
+        message,
         provider_response: `${channel.toUpperCase()}_CHAT_ID is not configured.`,
         attempts: 1,
       })
@@ -95,32 +128,60 @@ export async function sendOrderNotification(
     return;
   }
 
-  const message = buildMessage(event, order, notification.created_at);
-  const provider = providers[channel];
-
   try {
-    const result = await provider.send({ recipient, message });
+    const result = await providers[channel].send({ recipient, message });
     await supabaseAdmin
       .from("notifications")
       .update({
         status: result.ok ? "sent" : "failed",
+        message,
         provider_response: result.providerResponse,
         attempts: 1,
         sent_at: result.ok ? new Date().toISOString() : null,
       })
       .eq("id", notification.id);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown notification error";
-    console.error("Notification send threw unexpectedly", message);
+    const errorMessage = err instanceof Error ? err.message : "Unknown notification error";
+    console.error("Notification send threw unexpectedly", errorMessage);
     await supabaseAdmin
       .from("notifications")
       .update({
         status: "failed",
-        provider_response: message,
+        message,
+        provider_response: errorMessage,
         attempts: 1,
       })
       .eq("id", notification.id);
   }
+}
+
+/** Sends an admin notification for an order event, with optional extra lines. */
+export async function sendOrderNotification(
+  event: NotificationEvent,
+  order: OrderRow,
+  channel: NotificationChannel = "telegram",
+  details: string[] = []
+): Promise<void> {
+  await deliver({
+    channel,
+    event,
+    orderId: order.id,
+    message: (createdAt) => buildMessage(event, order, createdAt, details),
+  });
+}
+
+/** Sends a free-form admin alert, e.g. a payment that matched no order. */
+export async function sendAdminAlert(
+  event: NotificationEvent,
+  lines: string[],
+  orderId: string | null = null
+): Promise<void> {
+  await deliver({
+    channel: "telegram",
+    event,
+    orderId,
+    message: (createdAt) => [...lines, "", adminUrl("/admin/payments"), "", formatTimestamp(createdAt)].join("\n"),
+  });
 }
 
 export async function retryNotification(notificationId: string): Promise<{ ok: boolean; error?: string }> {
@@ -134,18 +195,21 @@ export async function retryNotification(notificationId: string): Promise<{ ok: b
     return { ok: false, error: "Notification not found." };
   }
 
-  if (!notification.order_id) {
-    return { ok: false, error: "Notification has no associated order." };
-  }
-
-  const { data: order, error: orderError } = await supabaseAdmin
-    .from("orders")
-    .select("*")
-    .eq("id", notification.order_id)
-    .single();
-
-  if (orderError || !order) {
-    return { ok: false, error: "Associated order not found." };
+  let message = notification.message;
+  if (!message) {
+    // Older rows didn't store their text; rebuild it from the order.
+    if (!notification.order_id) {
+      return { ok: false, error: "Notification has no associated order." };
+    }
+    const { data: order, error: orderError } = await supabaseAdmin
+      .from("orders")
+      .select("*")
+      .eq("id", notification.order_id)
+      .single();
+    if (orderError || !order) {
+      return { ok: false, error: "Associated order not found." };
+    }
+    message = buildMessage(notification.event as NotificationEvent, order, notification.created_at);
   }
 
   const recipient =
@@ -163,11 +227,6 @@ export async function retryNotification(notificationId: string): Promise<{ ok: b
     return { ok: false, error: "Channel is not configured." };
   }
 
-  const message = buildMessage(
-    notification.event as NotificationEvent,
-    order,
-    notification.created_at
-  );
   const provider = providers[notification.channel];
 
   try {
@@ -176,6 +235,7 @@ export async function retryNotification(notificationId: string): Promise<{ ok: b
       .from("notifications")
       .update({
         status: result.ok ? "sent" : "failed",
+        message,
         provider_response: result.providerResponse,
         attempts: notification.attempts + 1,
         sent_at: result.ok ? new Date().toISOString() : null,
@@ -183,15 +243,15 @@ export async function retryNotification(notificationId: string): Promise<{ ok: b
       .eq("id", notification.id);
     return { ok: result.ok, error: result.ok ? undefined : result.providerResponse };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown notification error";
+    const errorMessage = err instanceof Error ? err.message : "Unknown notification error";
     await supabaseAdmin
       .from("notifications")
       .update({
         status: "failed",
-        provider_response: message,
+        provider_response: errorMessage,
         attempts: notification.attempts + 1,
       })
       .eq("id", notification.id);
-    return { ok: false, error: message };
+    return { ok: false, error: errorMessage };
   }
 }

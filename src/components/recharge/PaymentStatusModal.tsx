@@ -4,10 +4,13 @@ import type { ReactNode } from "react";
 import { CheckCircle2, Clock, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { PaymentFlowState, RechargeOrder } from "@/lib/types";
 import { PaymentStatusBadge, RechargeStatusBadge } from "./StatusBadge";
+import { UpiPaymentPanel, UtrForm, type UpiPaymentInfo } from "./UpiPaymentPanel";
 
 interface PaymentStatusModalProps {
   flowState: PaymentFlowState;
   order: RechargeOrder | null;
+  payment: UpiPaymentInfo | null;
+  onSubmitUtr: (utr: string) => Promise<string | null>;
   onDone: () => void;
   onRetry: () => void;
   onViewTransaction: () => void;
@@ -16,6 +19,8 @@ interface PaymentStatusModalProps {
 export function PaymentStatusModal({
   flowState,
   order,
+  payment,
+  onSubmitUtr,
   onDone,
   onRetry,
   onViewTransaction,
@@ -28,16 +33,13 @@ export function PaymentStatusModal({
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 px-4 backdrop-blur-sm"
     >
-      <div className="w-full max-w-[400px] rounded-card bg-surface p-6 shadow-card">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-[400px] overflow-y-auto rounded-card bg-surface p-6 shadow-card">
         {flowState === "creating_order" && (
           <LoadingState title="Creating your order" subtitle="Please wait a moment..." />
         )}
 
-        {flowState === "awaiting_payment" && (
-          <LoadingState
-            title="Opening BaseUPI checkout"
-            subtitle="Redirecting you to complete payment..."
-          />
+        {flowState === "awaiting_payment" && payment && (
+          <UpiPaymentPanel payment={payment} onSubmitUtr={onSubmitUtr} onCancel={onDone} />
         )}
 
         {flowState === "verifying" && (
@@ -95,9 +97,10 @@ export function PaymentStatusModal({
               strokeWidth={1.5}
               aria-hidden="true"
             />
-            <h2 className="mt-4 text-xl font-bold text-foreground">Payment Pending</h2>
+            <h2 className="mt-4 text-xl font-bold text-foreground">Verifying Your Payment</h2>
             <p className="mt-1 text-sm text-muted">
-              We&apos;re checking your payment status.
+              We&apos;re matching your UTR with our account. Your recharge starts as soon as it&apos;s
+              confirmed. Keep your Order ID to check the status later.
             </p>
 
             <div className="mt-5 space-y-2.5 rounded-input border border-border bg-background px-4 py-3.5 text-left text-sm">
@@ -121,6 +124,34 @@ export function PaymentStatusModal({
                 className="w-full rounded-button px-4 py-2.5 text-sm font-medium text-accent transition-colors hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 View Transaction
+              </button>
+            </div>
+          </div>
+        )}
+
+        {flowState === "expired" && (
+          <div className="text-center">
+            <Clock className="mx-auto h-14 w-14 text-warning" strokeWidth={1.5} aria-hidden="true" />
+            <h2 className="mt-4 text-xl font-bold text-foreground">Payment Time Ended</h2>
+            <p className="mt-1 text-sm text-muted">
+              We didn&apos;t receive a payment for {order?.id ?? "this order"} in time. If money was
+              debited, enter your UTR below and we&apos;ll check it.
+            </p>
+            <div className="text-left"><UtrForm onSubmit={onSubmitUtr} submitted={false} defaultOpen /></div>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="w-full rounded-button bg-accent px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
+                Start a New Payment
+              </button>
+              <button
+                type="button"
+                onClick={onDone}
+                className="w-full rounded-button px-4 py-2.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+              >
+                Close
               </button>
             </div>
           </div>

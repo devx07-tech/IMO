@@ -6,7 +6,7 @@ import { PaymentStatusBadge, RechargeStatusBadge } from "@/components/recharge/S
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { OrderRow, AuditLogRow, NotificationRow } from "@/lib/db-types";
 import { useAdminData } from "@/lib/use-admin-data";
-import { paymentProviderLabel } from "@/lib/payment-provider";
+import { PAYMENT_PROVIDER, paymentProviderLabel } from "@/lib/payment-provider";
 
 interface OrderDetailDrawerProps {
   orderId: string;
@@ -36,6 +36,7 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
   const [savingNotes, setSavingNotes] = useState(false);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [confirmApprove, setConfirmApprove] = useState(false);
 
   const saveNotes = async () => {
     setSavingNotes(true);
@@ -72,7 +73,25 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
     } finally { setActionPending(null); }
   };
 
+  const decidePayment = async (action: "approve" | "reject") => {
+    setActionPending(action);
+    setActionError("");
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/payment`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Action failed.");
+      setConfirmApprove(false);
+      await load(); onChanged?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Action failed.");
+    } finally { setActionPending(null); }
+  };
+
   const order = data?.order;
+  const canDecidePayment = order?.payment_provider === PAYMENT_PROVIDER &&
+    (order.payment_status === "pending" || (order.payment_status === "failed" && Boolean(order.customer_utr)));
   const actions = order?.payment_status === "paid" ? RECHARGE_ACTIONS[order.recharge_status] ?? [] : [];
 
   return (
@@ -109,8 +128,10 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                 <Row label="Payment Provider" value={paymentProviderLabel(order.payment_provider)} />
                 {order.provider_order_id && <Row label="Provider Order ID" value={order.provider_order_id} />}
                 <Row label="Payment Status" value={<PaymentStatusBadge status={order.payment_status} />} />
-                {order.provider_payment_id && (
-                  <Row label="Provider Payment ID" value={order.provider_payment_id} />
+                {order.provider_payment_id && <Row label="Confirmed UTR" value={order.provider_payment_id} />}
+                {order.customer_utr && <Row label="Customer UTR" value={order.customer_utr} />}
+                {order.payment_status === "pending" && order.expires_at && (
+                  <Row label="Payment window ends" value={formatDateTime(order.expires_at)} />
                 )}
                 <Row label="Recharge Status" value={<RechargeStatusBadge status={order.recharge_status} />} />
                 <Row label="Created" value={formatDateTime(order.created_at)} />
@@ -118,8 +139,32 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                 {order.completed_at && <Row label="Completed" value={formatDateTime(order.completed_at)} />}
               </section>
 
-              {order.payment_provider === "baseupi" && order.payment_status === "pending" && (
-                <p className="rounded-input bg-background p-3 text-xs text-muted">Waiting for a signed BaseUPI payment confirmation. Check the Android bridge if payment has reached your UPI account. This order cannot enter the recharge queue until payment is confirmed.</p>
+              {canDecidePayment && (
+                <section className="space-y-2 rounded-input bg-background p-3">
+                  <p className="text-xs text-muted">
+                    {order.customer_utr
+                      ? "The customer says they paid. Find this UTR and the exact amount in Paytm for Business before approving."
+                      : "Waiting for the payment notification. Approve only if you can see this exact amount in Paytm for Business."}{" "}
+                    The order can&apos;t enter the recharge queue until payment is confirmed.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {confirmApprove ? (
+                      <button type="button" disabled={actionPending !== null} onClick={() => void decidePayment("approve")}
+                        className="rounded-button bg-success px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-60">
+                        {actionPending === "approve" ? "Approving..." : `I received ${formatCurrency(order.amount)} — approve`}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setConfirmApprove(true)}
+                        className="rounded-button bg-accent px-3.5 py-2 text-xs font-semibold text-white">Approve Payment</button>
+                    )}
+                    {order.customer_utr && (
+                      <button type="button" disabled={actionPending !== null} onClick={() => void decidePayment("reject")}
+                        className="rounded-button border border-border-strong px-3.5 py-2 text-xs font-semibold text-error disabled:opacity-60">
+                        {actionPending === "reject" ? "Rejecting..." : "Reject Claim"}
+                      </button>
+                    )}
+                  </div>
+                </section>
               )}
 
               {actions.length > 0 && (

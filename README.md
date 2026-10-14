@@ -1,11 +1,13 @@
 # IMO Recharge
 
 Customer site and admin console for IMO credit recharges, built with Next.js 16
-(App Router), Supabase (Postgres) and BaseUPI for UPI payments.
+(App Router) and Supabase (Postgres). Customers pay by UPI directly to our Paytm
+for Business merchant UPI ID; no payment gateway is involved.
 
 - **Customer site** (`/`): enter IMO ID, pick a package, pay, and look up order status.
 - **Admin console** (`/admin`): orders, recharge queue, packages, notifications, audit log.
-- **Notifications**: Telegram message to the admin on every paid / completed order.
+- **Notifications**: Telegram message to the admin on every paid / completed order, every
+  UTR that needs review, and every payment that matched no order.
 
 ## Local development
 
@@ -44,64 +46,76 @@ reach the browser.
 | `NEXT_PUBLIC_SUPABASE_URL`  | Supabase project URL                               |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose to the client.           |
 | `ADMIN_SESSION_SECRET`      | ≥ 32 random chars. Rotating it signs all admins out |
-| `BASEUPI_SECRET_KEY`        | Server API key from BaseUPI Backend API Keys |
-| `BASEUPI_WEBHOOK_SECRET`    | Server webhook signing secret from BaseUPI |
-| `CASHFREE_*`                | Retained for status checks and webhooks on legacy orders |
+| `UPI_BRIDGE_SECRET`         | ≥ 32 random chars. The payment phone sends it to confirm payments |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Admin order alerts                   |
-| `NEXT_PUBLIC_SITE_URL`      | Canonical URL, used for metadata and payment return URLs |
+| `NEXT_PUBLIC_SITE_URL`      | Canonical URL, used for metadata and links in alerts |
 
-## BaseUPI activation
+## Payments (direct UPI)
 
-1. In [BaseUPI](https://baseupi.app/docs), configure the receiver as
-   `kamal6382371168@okicici` and verify that it belongs to your account.
-   The merchant phone supplied for setup is `6382371168`; it is not a customer's phone.
-2. Generate the backend API key and webhook signing secret. Set
-   `BASEUPI_SECRET_KEY` and `BASEUPI_WEBHOOK_SECRET` in `.env.local` for local
-   testing and in the production host's environment for the live website.
-   Never use `NEXT_PUBLIC_` for these secrets.
-3. Register `https://kamalseller.com/api/webhooks/baseupi` in BaseUPI.
-4. Install and connect BaseUPI's Android Notification Bridge using its dashboard
-   instructions. Enable notification access, exclude it from battery optimization,
-   and keep the receiving phone online. Payment confirmation depends on this bridge.
-5. Deploy this code with `NEXT_PUBLIC_SITE_URL=https://kamalseller.com` and both secrets.
-   Without both secrets, new checkout requests return 503 instead of accepting payments.
-6. Make one small payment after deployment. Check that the receiver is correct,
-   the checkout amount matches the selected package and quantity, the signed webhook
-   marks the order paid, the admin recharge queue shows it, and its Telegram alert arrives.
-   Repeat webhook delivery to confirm the order is not notified twice.
+Every order is paid to the merchant UPI ID in `src/lib/business.ts`
+(`paytm.s2sovgg@pty`, payee name `Kamal Seller`).
 
-The integration pins the official `@snc0x/baseupi` 1.4 API contract: `x-api-key`,
-snake-case order fields, line items in paise, and a hosted checkout redirect.
-This differs from the examples on the documentation page. Check the installed SDK's
-types when upgrading. The webhook accepts both the documented success envelope and
-the SDK's `payment.completed` event, verifying HMAC signatures on the raw body and
-matching the order's amount and provider. A browser callback cannot mark an order paid.
+1. **Checkout.** The order gets a unique amount: the package total minus 1–99 paise
+   (₹30 becomes e.g. ₹29.37). A partial unique index stops two open orders sharing an
+   amount, so the amount alone tells us which order a payment belongs to. Orders above
+   ₹1,00,000 are refused (the usual UPI per-payment limit).
+2. **Pay.** On Android the customer taps "Pay with UPI app" (system app chooser) or a
+   Google Pay / PhonePe / Paytm button; on iPhone, the app buttons; on a computer, a QR
+   code. Every option fills in the payee, exact amount and Order ID.
+3. **Automatic confirmation.** A phone signed in to Paytm for Business forwards each
+   "payment received" notification to `/api/payments/upi-notify`. The server reads the
+   amount (and UTR when present), marks the matching order paid, adds it to the recharge
+   queue and sends the Telegram alert. The customer's screen updates by itself.
+4. **Fallback.** If nothing arrives, the customer can enter their 12-digit UTR. If the
+   phone already reported that UTR with the right amount, the order is confirmed at once.
+   Otherwise it goes to **Admin → Payments → Needs review** and you get a Telegram
+   alert. A UTR typed by a customer never confirms a payment on its own.
+5. **Expiry.** Unpaid orders close after 30 minutes and their amount is freed. A payment
+   that arrives late, or with the wrong amount, shows up under **Unmatched payments**
+   (with a Telegram alert) where you can attach it to the right order or dismiss it.
 
-Customer email is required by the current SDK order API and sent to BaseUPI.
-The site verifies payment on returning from hosted checkout; a delayed webhook keeps
-the order pending, with its Order ID available for later lookup. Payment confirmation
-queues a recharge for the existing admin workflow; it does not directly credit IMO.
-Existing Cashfree orders retain their webhook and server status-check flow.
-No database migration is required: provider names are already stored as text.
+Security: the bridge endpoint needs `Authorization: Bearer <UPI_BRIDGE_SECRET>`
+(compared in constant time, refused if the secret is shorter than 32 characters) and is
+rate limited. A UTR can confirm only one order (unique index), payments are confirmed with
+a conditional update so they can't be confirmed twice, the UTR endpoint is rate limited,
+and admins must confirm the exact amount before approving.
+
+### Payment phone (automatic confirmation)
+
+Use an Android phone that stays on, ideally a spare one.
+
+1. Generate a secret and set it as `UPI_BRIDGE_SECRET` on the host (and in `.env.local`):
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
+2. Install **Paytm for Business**, sign in to the merchant account, and turn on payment
+   notifications.
+3. Install **MacroDroid** and create a macro:
+   - Trigger: *Notification* → *Notification Received* → app **Paytm for Business**.
+   - Action: *HTTP Request* → `POST https://kamalseller.com/api/payments/upi-notify`
+     - Header: `Authorization` = `Bearer <your UPI_BRIDGE_SECRET>`
+     - Content type `text/plain`, body: `[not_title] - [notification]`
+4. Create a second macro so the admin page can tell the phone is online:
+   - Trigger: *Regular Interval* every 15 minutes.
+   - Action: the same HTTP Request with body `ping`.
+5. In Android settings, give MacroDroid notification access, and turn off battery
+   optimisation for MacroDroid and Paytm for Business.
+6. Pay ₹1–2 to a live order from another phone. Check that the order turns Paid on the
+   site, appears in the recharge queue, and that the Telegram alert arrives.
+   **Admin → Payments** shows when the phone last checked in.
+
+If the phone is off, customers can still pay; their orders wait for UTR review instead
+of being confirmed automatically.
 
 ### Admin payment management
 
-- `/admin/payments` shows BaseUPI key readiness without exposing secrets, the
-  expected receiver and webhook URL, all-time pending/paid/failed counts, the last
-  confirmed payment time, and recent BaseUPI orders. Configuration does not confirm
-  that the receiver or Android bridge is set up correctly in the external dashboard.
-- Orders can be filtered by provider, payment status, or recharge state and paged
-  through 50 records at a time. Recharge-state filters and queue sections include
-  only confirmed paid orders, for both BaseUPI and legacy Cashfree payments.
-- Order details include provider order/payment references, payment timestamps,
-  checkout/payment audit events, notification delivery records, and admin notes.
-  Confirmed payment automatically adds the order to the waiting recharge queue;
-  admin actions then start, complete, fail, or resume recharge work.
-- Dashboard, order lists, payment overview, and recharge queue refresh every 15
-  seconds while visible. Failed requests are shown as errors instead of empty results.
-  Today's paid count is based on `paid_at` in India time, like today's revenue.
-- Webhook replay only acknowledges the already processed payment. It does not
-  repeat payment audit entries, Telegram messages, or recharge transitions.
+- `/admin/payments`: phone status, waiting/review/unmatched/paid counts, the **Needs
+  review** queue (Approve after you see the exact amount and UTR in Paytm for Business,
+  or Reject), **Unmatched payments** (attach to an order or dismiss), recent UPI orders.
+- Order details show confirmed and customer UTRs, the payment window, and Approve /
+  Reject buttons for orders still waiting for payment.
+- Orders can be searched by Order ID, Profile ID or 12-digit UTR. Recharge-state
+  filters and queue sections include only confirmed paid orders.
+- Dashboard, order lists, payment overview and recharge queue refresh every 15 seconds
+  while visible.
 
 ## Database
 

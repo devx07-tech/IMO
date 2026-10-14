@@ -10,6 +10,8 @@ export const config = {
     "/api/orders",
     "/api/orders/lookup",
     "/api/orders/verify",
+    "/api/orders/utr",
+    "/api/payments/upi-notify",
   ],
 };
 
@@ -50,9 +52,20 @@ export async function proxy(request: NextRequest) {
     if (!r.ok) return tooMany(r.retryAfter);
   }
   if (pathname === "/api/orders/verify") {
-    // The status modal polls this, so allow a steady trickle per IP.
-    const r = await rateLimit(`verify:${ip}`, 60, MINUTE);
+    // The payment screen polls this every few seconds while the customer pays.
+    const r = await rateLimit(`verify:${ip}`, 120, MINUTE);
     if (!r.ok) return tooMany(r.retryAfter);
+  }
+  if (pathname === "/api/orders/utr") {
+    // Slows down guessing UTRs against open orders.
+    const r = await rateLimit(`utr:${ip}`, 6, 10 * MINUTE);
+    if (!r.ok) return tooMany(r.retryAfter);
+  }
+  if (pathname === "/api/payments/upi-notify") {
+    const r = await rateLimit(`bridge:${ip}`, 120, MINUTE);
+    if (!r.ok) return tooMany(r.retryAfter);
+    // Authenticated by its own bearer secret in the route handler.
+    return NextResponse.next();
   }
   if (pathname === "/api/admin/login" && request.method === "POST") {
     const r = await rateLimit(`login:${ip}`, 5, 10 * MINUTE);

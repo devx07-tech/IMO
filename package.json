@@ -11,14 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cashfreepayments/cashfree-js": "^1.0.7",
-    "@snc0x/baseupi": "1.4.0",
     "@supabase/supabase-js": "^2.117.3",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "jose": "^6.2.12",
     "lucide-react": "^1.52.0",
     "next": "16.4.0",
+    "qrcode": "^1.5.4",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "server-only": "^0.0.1",
@@ -29,6 +28,7 @@
     "@tailwindcss/turbopack": "^4",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
