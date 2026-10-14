@@ -4,7 +4,8 @@ import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react
 import QRCode from "qrcode";
 import { Copy, Loader2, ShieldCheck, Smartphone } from "lucide-react";
 import { BUSINESS } from "@/lib/business";
-import { buildUpiLink, formatPaise, type UpiApp } from "@/lib/upi";
+import { buildUpiLink, formatPaise } from "@/lib/upi";
+import { PaymentAppIcon, type PaymentAppIconName } from "./PaymentAppIcon";
 
 export interface UpiPaymentInfo {
   orderNumber: string;
@@ -33,7 +34,7 @@ function useSecondsLeft(expiresAt: string | null): number | null {
   return Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
 }
 
-const APP_BUTTONS: { app: UpiApp; label: string }[] = [
+const APP_BUTTONS: { app: PaymentAppIconName; label: string }[] = [
   { app: "gpay", label: "Google Pay" },
   { app: "phonepe", label: "PhonePe" },
   { app: "paytm", label: "Paytm" },
@@ -106,8 +107,9 @@ export function UpiPaymentPanel({
           <p className="pt-1 text-center text-xs text-muted">Or open directly</p>
           <div className="grid grid-cols-3 gap-2">
             {APP_BUTTONS.map(({ app, label }) => (
-              <a key={app} href={buildUpiLink(request, app)}
-                className="rounded-button border border-border-strong px-2 py-2.5 text-center text-xs font-semibold text-foreground hover:border-accent hover:text-accent">
+              <a key={app} href={buildUpiLink(request, app)} aria-label={`Pay with ${label}`}
+                className="flex flex-col items-center gap-1 rounded-button border border-border-strong px-2 py-2.5 text-center text-xs font-semibold text-foreground hover:border-accent hover:text-accent">
+                <PaymentAppIcon app={app} className="h-6 w-auto max-w-full" />
                 {label}
               </a>
             ))}
