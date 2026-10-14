@@ -60,6 +60,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   // The latest unpaid order, so "Try again" reopens the same Razorpay order.
   const [unpaidOrder, setUnpaidOrder] = useState<PublicOrder | null>(null);
   const [submitError, setSubmitError] = useState("");
+  const [failureReason, setFailureReason] = useState<string | null>(null);
   const submitting = useRef(false);
   const paymentHandled = useRef(false);
 
@@ -154,6 +155,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   const openCheckout = async (order: PublicOrder) => {
     if (!order.checkout) return;
     paymentHandled.current = false;
+    setFailureReason(null);
     setFlowState("awaiting_payment");
     try {
       await openRazorpayCheckout({
@@ -166,6 +168,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
           void confirmPayment(order.orderNumber, response);
         },
         onDismiss: () => { if (!paymentHandled.current) setFlowState("failed"); },
+        onFailed: setFailureReason,
       });
     } catch {
       setFlowState("idle");
@@ -336,6 +339,7 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
       <PaymentStatusModal
         flowState={flowState}
         order={currentOrder}
+        failureReason={failureReason}
         onDone={closeModal}
         onRetry={retryPayment}
         onViewTransaction={viewTransaction}

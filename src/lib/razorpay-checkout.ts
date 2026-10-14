@@ -44,6 +44,8 @@ export async function openRazorpayCheckout(params: {
   phone: string | null;
   onSuccess: (response: CheckoutSuccess) => void;
   onDismiss: () => void;
+  /** A payment attempt failed; the window stays open so the customer can retry. */
+  onFailed: (reason: string) => void;
 }): Promise<void> {
   await loadCheckout();
   if (!window.Razorpay) throw new Error("Could not load Razorpay.");
@@ -60,6 +62,10 @@ export async function openRazorpayCheckout(params: {
     retry: { enabled: true },
     modal: { confirm_close: true, ondismiss: params.onDismiss },
     handler: params.onSuccess,
+  });
+  checkout.on("payment.failed", (response) => {
+    const error = (response as { error?: { description?: string } } | null)?.error;
+    params.onFailed(error?.description || "The payment was declined.");
   });
   checkout.open();
 }

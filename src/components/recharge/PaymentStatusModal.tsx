@@ -8,6 +8,7 @@ import { PaymentStatusBadge, RechargeStatusBadge } from "./StatusBadge";
 interface PaymentStatusModalProps {
   flowState: PaymentFlowState;
   order: RechargeOrder | null;
+  failureReason: string | null;
   onDone: () => void;
   onRetry: () => void;
   onViewTransaction: () => void;
@@ -16,6 +17,7 @@ interface PaymentStatusModalProps {
 export function PaymentStatusModal({
   flowState,
   order,
+  failureReason,
   onDone,
   onRetry,
   onViewTransaction,
@@ -131,7 +133,12 @@ export function PaymentStatusModal({
               strokeWidth={1.5}
               aria-hidden="true"
             />
-            <h2 className="mt-4 text-xl font-bold text-foreground">Payment Not Completed</h2>
+            <h2 className="mt-4 text-xl font-bold text-foreground">
+              {failureReason ? "Payment Failed" : "Payment Not Completed"}
+            </h2>
+            {failureReason && (
+              <p className="mt-1 text-sm font-medium text-error">{failureReason}</p>
+            )}
             <p className="mt-1 text-sm text-muted">
               Your payment wasn&apos;t completed. If money was deducted, don&apos;t pay again: it&apos;s
               confirmed automatically within a few minutes and shows in Transaction History.

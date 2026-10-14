@@ -46,6 +46,10 @@ export async function POST(request: NextRequest) {
   }
 
   const amountPaise = toPaise(pkg.price) * quantity;
+  // Razorpay's minimum order is ₹1.
+  if (amountPaise < 100) {
+    return NextResponse.json({ error: "Selected recharge package is not available." }, { status: 400 });
+  }
   if (amountPaise > MAX_ORDER_AMOUNT_PAISE) {
     return NextResponse.json(
       { error: "Maximum ₹1,00,000 per payment. Please reduce the quantity." },
