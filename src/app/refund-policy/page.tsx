@@ -43,9 +43,11 @@ export default function RefundPolicyPage() {
           title: "4. Failed payments",
           body: (
             <p>
-              If money was deducted but the order shows failed or pending, it is normally
-              returned to your account automatically by your bank within 5–7 working days. If
-              not, contact us with your Order ID.
+              If money was deducted but the order still shows pending or failed, enter your
+              12-digit UPI reference number (UTR) on the payment screen, or send us your Order ID
+              and UTR. We check every such payment against our account and either complete your
+              recharge or refund the amount. If the UPI transaction itself failed, your bank
+              returns the money automatically, usually within 5–7 working days.
             </p>
           ),
         },
