@@ -3,7 +3,7 @@ import { supabaseAdmin } from "./supabase-admin";
 import type { OrderRow } from "./db-types";
 import { logAudit } from "./audit";
 import { sendOrderNotification } from "./notifications/service";
-import { PAYMENT_PROVIDER } from "./payment-provider";
+import { RAZORPAY_PROVIDER } from "./payment-provider";
 import { toPaise } from "./money";
 import {
   captureRazorpayPayment,
@@ -38,7 +38,7 @@ export async function confirmRazorpayPayment(
   payment: RazorpayPayment,
   source: ConfirmSource
 ): Promise<ConfirmResult> {
-  if (order.payment_provider !== PAYMENT_PROVIDER || !order.provider_order_id ||
+  if (order.payment_provider !== RAZORPAY_PROVIDER || !order.provider_order_id ||
       payment.order_id !== order.provider_order_id) {
     return { status: "mismatch", reason: "Payment belongs to a different order." };
   }
@@ -82,7 +82,7 @@ export async function confirmRazorpayPayment(
     action: "payment_confirmed",
     entityType: "order",
     entityId: updated.id,
-    metadata: { provider: PAYMENT_PROVIDER, source, paymentId: captured.id, method: captured.method, reference, amount: updated.amount },
+    metadata: { provider: RAZORPAY_PROVIDER, source, paymentId: captured.id, method: captured.method, reference, amount: updated.amount },
   });
   await sendOrderNotification("order_paid", updated, "telegram", [
     `Payment ID: ${captured.id}`,

@@ -51,6 +51,25 @@ function buildMessage(
     ].join("\n");
   }
 
+  if (event === "payment_review") {
+    return [
+      "PAYMENT NEEDS REVIEW",
+      "",
+      `Order: ${order.order_number}`,
+      `IMO ID: ${order.imo_profile_id}`,
+      `Diamonds: ${(order.credits * order.quantity).toLocaleString("en-IN")}`,
+      `Expected amount: ₹${Number(order.amount).toFixed(2)}`,
+      `Customer UTR: ${order.customer_utr ?? "-"}`,
+      ...(order.customer_phone ? [`Customer WhatsApp: +91 ${order.customer_phone}`] : []),
+      ...details,
+      "",
+      "Find this UTR and exact amount in Paytm for Business or the ICICI account before approving.",
+      adminUrl("/admin/payments"),
+      "",
+      formatTimestamp(timestampIso),
+    ].join("\n");
+  }
+
   return [
     "IMO RECHARGE COMPLETED",
     "",
@@ -148,6 +167,20 @@ export async function sendOrderNotification(
     event,
     orderId: order.id,
     message: (createdAt) => buildMessage(event, order, createdAt, details),
+  });
+}
+
+/** Sends a free-form admin alert, e.g. a payment that matched no order. */
+export async function sendAdminAlert(
+  event: NotificationEvent,
+  lines: string[],
+  orderId: string | null = null
+): Promise<void> {
+  await deliver({
+    channel: "telegram",
+    event,
+    orderId,
+    message: (createdAt) => [...lines, "", adminUrl("/admin/payments"), "", formatTimestamp(createdAt)].join("\n"),
   });
 }
 

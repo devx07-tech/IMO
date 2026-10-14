@@ -23,8 +23,8 @@ export default function TermsPage() {
           title: "2. How it works",
           body: (
             <p>
-              Choose a package, enter your IMO ID and WhatsApp number, and pay online through
-              Razorpay (UPI, cards or net banking). After payment is
+              Choose a package, enter your IMO ID, and pay online by UPI.
+              After payment is
               confirmed, the credits are added to that IMO account, usually within a few
               minutes.
             </p>
@@ -43,8 +43,11 @@ export default function TermsPage() {
           title: "4. Prices and payment",
           body: (
             <p>
-              All prices are in Indian Rupees (₹). Payments are processed securely by Razorpay.
-              Prices may change, but the price shown when you pay is the price you are charged.
+              All prices are in Indian Rupees (₹). When you pay by UPI directly to our UPI account,
+              each order asks for a unique amount up to ₹0.99 below the package price so we can
+              identify your payment; please pay exactly the amount shown, within 30 minutes. Where
+              Razorpay checkout is offered, payments are processed securely by Razorpay. Prices may
+              change, but the amount shown when you pay is the amount you are charged.
             </p>
           ),
         },

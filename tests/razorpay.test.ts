@@ -141,9 +141,10 @@ describe("checkout callback", () => {
 });
 
 describe("order creation", () => {
+  beforeEach(() => vi.stubEnv("PAYMENT_MODE", "razorpay"));
   const url = "https://kamalseller.com/api/orders";
   const input = { imoProfileId: "46523623", packageId: "6f1c1b7e-3c2a-4d8e-9a55-0d6f1d2b7c11", quantity: 1, whatsapp: "9876543210" };
-  it("requires a valid WhatsApp number", async () => {
+  it("treats the WhatsApp number as optional but rejects an invalid one", async () => {
     expect((await createOrder(post(url, { ...input, whatsapp: "12345" }))).status).toBe(400);
   });
   it("is unavailable until Razorpay keys are set", async () => {

@@ -34,20 +34,25 @@ describe("admin payment access and configuration", () => {
     expect(mocks.from).not.toHaveBeenCalled();
   });
   it("reports readiness without returning secret values", async () => {
+    vi.stubEnv("UPI_BRIDGE_SECRET", "private-bridge-secret-do-not-return-0123456789");
     vi.stubEnv("RAZORPAY_KEY_ID", "rzp_live_PUBLICKEY");
     vi.stubEnv("RAZORPAY_KEY_SECRET", "private-key-secret-do-not-return");
     vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "private-webhook-secret-do-not-return");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
     const response = await payments();
     const body = await response.json();
-    expect(body.configuration).toMatchObject({ keysConfigured: true, mode: "live", webhookSecretConfigured: true, webhookUrl: "https://kamalseller.com/api/webhooks/razorpay" });
+    expect(body.mode).toBe("upi");
+    expect(body.upi).toMatchObject({ merchantId: "paytm.s2sovgg@pty", personalId: "kamal6382371168@okicici", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.com/api/payments/upi-notify" });
+    expect(body.razorpay).toMatchObject({ keysConfigured: true, keyMode: "live", webhookSecretConfigured: true });
     expect(JSON.stringify(body)).not.toContain("private-");
-    expect(mocks.query.eq).toHaveBeenCalledWith("payment_provider", "razorpay");
   });
   it("reports missing credentials and database failures accurately", async () => {
-    vi.stubEnv("RAZORPAY_KEY_ID", ""); vi.stubEnv("RAZORPAY_KEY_SECRET", ""); vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "");
+    vi.stubEnv("UPI_BRIDGE_SECRET", ""); vi.stubEnv("RAZORPAY_KEY_ID", ""); vi.stubEnv("RAZORPAY_KEY_SECRET", "");
+    vi.stubEnv("PAYMENT_MODE", "razorpay");
     const body = await (await payments()).json();
-    expect(body.configuration).toMatchObject({ keysConfigured: false, mode: "unconfigured", webhookSecretConfigured: false });
+    expect(body.mode).toBe("razorpay");
+    expect(body.upi.bridgeSecretConfigured).toBe(false);
+    expect(body.razorpay).toMatchObject({ keysConfigured: false, keyMode: "unconfigured" });
     mocks.execute.mockResolvedValueOnce({ data: null, error: { message: "unavailable" } });
     expect((await payments()).status).toBe(500);
   });

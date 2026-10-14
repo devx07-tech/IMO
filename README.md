@@ -1,10 +1,11 @@
 # IMO Recharge
 
 Customer site and admin console for IMO credit recharges, built with Next.js 16
-(App Router), Supabase (Postgres) and Razorpay for payments.
+(App Router) and Supabase (Postgres). Customers pay by UPI directly to Kamal's own UPI
+IDs (default), or through Razorpay once a Razorpay account in Kamal's name is approved.
 
-- **Customer site** (`/`): enter IMO ID and WhatsApp number, pick a package, pay through
-  Razorpay, and look up purchase history by IMO ID, mobile number or Order ID.
+- **Customer site** (`/`): enter IMO ID, pick a package, pay, and look up purchase history
+  by IMO ID, mobile number or Order ID.
 - **Admin console** (`/admin`): orders, recharge queue, payments, packages, notifications,
   audit log, and a WhatsApp button to message each customer.
 - **Notifications**: Telegram message to the admin on every paid order (IMO ID, diamonds,
@@ -47,42 +48,95 @@ reach the browser.
 | `NEXT_PUBLIC_SUPABASE_URL`  | Supabase project URL                               |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only. Never expose to the client.           |
 | `ADMIN_SESSION_SECRET`      | ≥ 32 random chars. Rotating it signs all admins out |
+| `PAYMENT_MODE`              | `upi` (default) or `razorpay` |
+| `UPI_BRIDGE_SECRET`         | ≥ 32 random chars. The payment phone sends it to confirm UPI payments |
 | `RAZORPAY_KEY_ID`           | Razorpay key id (`rzp_test_…` or `rzp_live_…`); public |
 | `RAZORPAY_KEY_SECRET`       | Server-only Razorpay key secret |
 | `RAZORPAY_WEBHOOK_SECRET`   | Secret you choose when creating the Razorpay webhook |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Admin order alerts                   |
 | `NEXT_PUBLIC_SITE_URL`      | Canonical URL, used for metadata and links in alerts |
 
-## Payments (Razorpay)
+## Payments
 
-1. **Checkout.** `POST /api/orders` saves the order (exact package price, customer's
-   WhatsApp number) and creates a Razorpay order. The browser opens Razorpay Checkout,
-   which on phones offers Google Pay / PhonePe / Paytm and other UPI apps directly, plus
-   cards and net banking. Orders above ₹1,00,000 are refused.
-2. **Confirmation.** On success Checkout returns a signed response to `/api/orders/pay`.
-   The signature is checked, then the payment is fetched from Razorpay, so status and
-   amount always come from Razorpay, never the browser. The webhook
-   (`/api/webhooks/razorpay`, `payment.captured` / `order.paid`, HMAC-verified) confirms the
-   same payment even if the customer closes the page. If neither has arrived, the checkout
-   screen asks Razorpay directly (`/api/orders/verify?sync=1`). Confirmation is idempotent:
-   the order is marked paid once, one payment can't pay two orders, and an authorized
-   payment is captured first.
-3. **After payment.** The order enters the recharge queue and Telegram gets the alert. The
-   admin credits the diamonds in IMO, marks the order completed, and taps **WhatsApp** to
-   send the customer a ready-made message with a link to their purchase history
-   (`/?history=<IMO ID>`).
-4. **History.** Customers search by IMO ID, WhatsApp number or Order ID and see their paid
-   orders, amounts and whether the diamonds were credited.
-5. **In-app browsers.** Opened inside IMO, WhatsApp, Instagram or Facebook on Android, the
-   site moves itself to Chrome (once per session) because in-app browsers can't always
-   open UPI apps; a banner offers the same. iOS shows instructions to open in Safari.
+`PAYMENT_MODE` picks the checkout for new orders: `upi` (default) or `razorpay`.
+
+### Direct UPI (default)
+
+Money goes straight to Kamal's own UPI IDs, configured in `src/lib/business.ts`
+(`BUSINESS.upi`):
+
+| Checkout option | Pays to | Why |
+| --- | --- | --- |
+| Paytm button | merchant `paytm.s2sovgg@pty` | Paytm accepts app-opened payments to its own merchant ID |
+| Google Pay / PhonePe / Other UPI apps | personal `kamal6382371168@okicici` | the merchant ID rejects these ("VPA not available") |
+| QR code (computer, or saved to the gallery) | merchant | scanned payments are accepted |
+
+Change `BUSINESS.upi.routes` if testing shows otherwise.
+
+1. **Checkout.** Each order gets a unique amount: package total minus 1–99 paise (₹30 →
+   e.g. ₹29.37). A partial unique index stops two open orders sharing an amount, so the
+   amount identifies the order whichever ID it was paid to. Unpaid orders close after 30
+   minutes. Orders above ₹1,00,000 are refused.
+2. **Automatic confirmation.** Kamal's phone forwards the Paytm for Business "payment
+   received" notification (merchant ID) and the ICICI credit SMS (personal ID) to
+   `/api/payments/upi-notify`. The server reads the amount and UTR, marks the matching order
+   paid, sends the Telegram alert and puts it in the recharge queue; the customer's screen
+   updates by itself.
+3. **Fallback.** The customer can enter their 12-digit UTR. If the phone already reported it
+   with the right amount the order is confirmed; otherwise it goes to **Admin → Payments →
+   Needs review** with a Telegram alert. A customer's UTR alone never confirms a payment.
+   Late or wrong-amount payments appear under **Unmatched payments** to attach or dismiss.
+   Customers can cancel an unpaid order (not once they've submitted a UTR).
+
+The bridge endpoint needs `Authorization: Bearer <UPI_BRIDGE_SECRET>` (constant-time
+compare, refused if the secret is under 32 characters) and is rate limited; one UTR can
+confirm only one order; confirmation is a conditional update so it can't happen twice.
+
+### Payment phone (automatic UPI confirmation)
+
+Use Kamal's phone (it receives the ICICI SMS) or a phone with the same SIM, kept on.
+
+1. Set `UPI_BRIDGE_SECRET` in Vercel (generate with
+   `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`).
+2. Install **Paytm for Business**, sign in, and turn on payment notifications.
+3. Install **MacroDroid** and create three macros, each with the action *HTTP Request* →
+   `POST https://kamalseller.com/api/payments/upi-notify`, header
+   `Authorization` = `Bearer <UPI_BRIDGE_SECRET>`, content type `text/plain`:
+   - Trigger *Notification Received* → app **Paytm for Business**; body `[not_title] - [notification]`
+   - Trigger *SMS Received* → from senders containing **ICICI** and text containing
+     **credited**; body `[sms_message]`
+   - Trigger *Regular Interval* every 15 minutes; body `ping` (shows the phone is online)
+4. Give MacroDroid notification and SMS access; turn off battery optimisation for MacroDroid
+   and Paytm for Business.
+5. Pay a small live order through each button (Paytm, Google Pay, PhonePe, QR) from another
+   person's account and check each turns Paid with a Telegram alert.
+
+### Razorpay (when `PAYMENT_MODE=razorpay`)
+
+1. **Checkout.** `POST /api/orders` saves the order (exact package price) and creates a
+   Razorpay order; the browser opens Razorpay Checkout (one-tap UPI apps, cards, net
+   banking).
+2. **Confirmation.** The signed checkout response goes to `/api/orders/pay`, which re-fetches
+   the payment from Razorpay; the HMAC-verified webhook (`/api/webhooks/razorpay`,
+   `payment.captured` / `order.paid`) confirms it even if the customer closes the page; the
+   checkout screen can also ask Razorpay directly (`/api/orders/verify?sync=1`). Confirmation
+   is idempotent and one payment can't pay two orders.
+
+### After payment (both modes)
+
+The order enters the recharge queue and Telegram gets the alert (IMO ID, diamonds, amount,
+customer WhatsApp). The admin credits the diamonds in IMO, marks the order completed and taps
+**WhatsApp** to send the customer a ready-made message with a link to their purchase history
+(`/?history=<IMO ID>`). Opened inside IMO, WhatsApp, Instagram or Facebook on Android, the
+site moves itself to Chrome so UPI apps can open; iOS shows instructions to open in Safari.
 
 ### Razorpay setup
 
 1. Razorpay Dashboard → **Account & Settings → API Keys**: generate keys. Use **Test mode**
    first, then **Live mode**.
-2. Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in Vercel (and `.env.local` for local
-   testing). Never put the key secret in client code or chat.
+2. Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` and `PAYMENT_MODE=razorpay` in Vercel (and
+   `.env.local` for local testing). The keys must belong to Kamal's own Razorpay account.
+   Never put the key secret in client code or chat.
 3. Razorpay Dashboard → **Webhooks → Add new webhook**:
    - URL: `https://kamalseller.com/api/webhooks/razorpay`
    - Secret: a long random string; set the same value as `RAZORPAY_WEBHOOK_SECRET`

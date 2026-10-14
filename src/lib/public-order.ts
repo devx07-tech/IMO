@@ -1,14 +1,16 @@
 import type { OrderRow } from "./db-types";
-import { PAYMENT_PROVIDER } from "./payment-provider";
+import { RAZORPAY_PROVIDER, UPI_PROVIDER } from "./payment-provider";
 import { toPaise } from "./money";
 
 /**
  * The order fields a customer may see. An unpaid order also carries what the
- * browser needs to (re)open Razorpay Checkout; the key id is public.
+ * browser needs to pay it: Razorpay Checkout details (the key id is public) or
+ * the exact UPI amount and payment window.
  */
 export function publicOrder(order: OrderRow, razorpayKeyId?: string) {
-  const payable = order.payment_provider === PAYMENT_PROVIDER && order.payment_status === "pending" &&
-    order.provider_order_id && razorpayKeyId;
+  const pending = order.payment_status === "pending";
+  const razorpay = pending && order.payment_provider === RAZORPAY_PROVIDER && order.provider_order_id && razorpayKeyId;
+  const upi = pending && order.payment_provider === UPI_PROVIDER;
   return {
     orderNumber: order.order_number,
     imoProfileId: order.imo_profile_id,
@@ -18,8 +20,12 @@ export function publicOrder(order: OrderRow, razorpayKeyId?: string) {
     paymentStatus: order.payment_status,
     rechargeStatus: order.recharge_status,
     createdAt: order.created_at,
-    checkout: payable
+    paymentMethod: order.payment_provider,
+    checkout: razorpay
       ? { keyId: razorpayKeyId, razorpayOrderId: order.provider_order_id!, amountPaise: toPaise(order.amount) }
+      : null,
+    payment: upi
+      ? { amountPaise: toPaise(order.amount), expiresAt: order.expires_at, utrSubmitted: Boolean(order.customer_utr) }
       : null,
   };
 }

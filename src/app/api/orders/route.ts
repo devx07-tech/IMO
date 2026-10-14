@@ -3,16 +3,18 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { generateUniqueOrderNumber } from "@/lib/order-number";
 import { logAudit } from "@/lib/audit";
-import { PAYMENT_PROVIDER } from "@/lib/payment-provider";
+import { activePaymentMode, RAZORPAY_PROVIDER, UPI_PROVIDER } from "@/lib/payment-provider";
 import { MAX_ORDER_AMOUNT_PAISE, toPaise } from "@/lib/money";
 import { publicOrder } from "@/lib/public-order";
 import { createRazorpayOrder, razorpayConfigured, razorpayKeyId } from "@/lib/razorpay";
+import { expireStaleOrders, insertUpiOrder, PaymentsBusyError } from "@/lib/upi-payments";
 
 const createOrderSchema = z.object({
   imoProfileId: z.string().regex(/^\d{6,15}$/, "Enter a valid Profile ID."),
   packageId: z.string().uuid(),
   quantity: z.number().int().min(1).max(10),
-  whatsapp: z.string().trim().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit WhatsApp number."),
+  // Optional: the checkout no longer asks for it, but an API caller may send one.
+  whatsapp: z.string().trim().regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit WhatsApp number.").optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -25,7 +27,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!razorpayConfigured()) {
+  const mode = activePaymentMode();
+  if (mode === RAZORPAY_PROVIDER && !razorpayConfigured()) {
     return NextResponse.json({ error: "Payments are temporarily unavailable. Please contact support." }, { status: 503 });
   }
 
@@ -46,8 +49,8 @@ export async function POST(request: NextRequest) {
   }
 
   const amountPaise = toPaise(pkg.price) * quantity;
-  // Razorpay's minimum order is ₹1.
-  if (amountPaise < 100) {
+  // Razorpay's minimum order is ₹1; UPI orders also take up to 99 paise off.
+  if (amountPaise < 200) {
     return NextResponse.json({ error: "Selected recharge package is not available." }, { status: 400 });
   }
   if (amountPaise > MAX_ORDER_AMOUNT_PAISE) {
@@ -57,20 +60,42 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const orderNumber = await generateUniqueOrderNumber();
+  const base = {
+    order_number: await generateUniqueOrderNumber(),
+    imo_profile_id: imoProfileId,
+    package_id: pkg.id,
+    credits: pkg.credits,
+    quantity,
+    unit_price: pkg.price,
+    customer_phone: whatsapp ?? null,
+  };
+
+  if (mode === UPI_PROVIDER) {
+    try {
+      await expireStaleOrders();
+      const order = await insertUpiOrder(base, amountPaise);
+      await logAudit({ action: "payment_checkout_created", entityType: "order", entityId: order.id,
+        metadata: { provider: UPI_PROVIDER, amount: order.amount } });
+      return NextResponse.json({ order: publicOrder(order) });
+    } catch (err) {
+      if (err instanceof PaymentsBusyError) {
+        return NextResponse.json(
+          { error: "Many payments are in progress right now. Please try again in a few minutes." },
+          { status: 503 }
+        );
+      }
+      console.error("Failed to create UPI order", err);
+      return NextResponse.json({ error: "Could not save your order. Please try again." }, { status: 500 });
+    }
+  }
+
   // Persist before contacting Razorpay so a webhook can always find the order.
   const { data: order, error: insertError } = await supabaseAdmin
     .from("orders")
     .insert({
-      order_number: orderNumber,
-      imo_profile_id: imoProfileId,
-      package_id: pkg.id,
-      credits: pkg.credits,
-      quantity,
-      unit_price: pkg.price,
+      ...base,
       amount: amountPaise / 100,
-      customer_phone: whatsapp,
-      payment_provider: PAYMENT_PROVIDER,
+      payment_provider: RAZORPAY_PROVIDER,
       payment_status: "pending",
       recharge_status: "waiting",
     })
@@ -85,8 +110,8 @@ export async function POST(request: NextRequest) {
   try {
     const razorpayOrder = await createRazorpayOrder({
       amountPaise,
-      receipt: orderNumber,
-      notes: { order_number: orderNumber, imo_id: imoProfileId, diamonds: String(pkg.credits * quantity) },
+      receipt: base.order_number,
+      notes: { order_number: base.order_number, imo_id: imoProfileId, diamonds: String(pkg.credits * quantity) },
     });
     const { data: linked, error: linkError } = await supabaseAdmin
       .from("orders")
@@ -97,7 +122,7 @@ export async function POST(request: NextRequest) {
     if (linkError || !linked) throw linkError ?? new Error("Could not link Razorpay order.");
 
     await logAudit({ action: "payment_checkout_created", entityType: "order", entityId: order.id,
-      metadata: { provider: PAYMENT_PROVIDER, razorpayOrderId: razorpayOrder.id, amount: linked.amount } });
+      metadata: { provider: RAZORPAY_PROVIDER, razorpayOrderId: razorpayOrder.id, amount: linked.amount } });
     return NextResponse.json({ order: publicOrder(linked, razorpayKeyId()) });
   } catch (err) {
     console.error("Razorpay order creation failed", err instanceof Error ? err.message : err);

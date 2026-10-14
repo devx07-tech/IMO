@@ -4,6 +4,10 @@ import { supabaseAdmin } from "./supabase-admin";
 export type AuditAction =
   | "payment_checkout_created"
   | "payment_confirmed"
+  | "payment_review_requested"
+  | "payment_rejected"
+  | "payment_event_dismissed"
+  | "order_cancelled"
   | "admin_login"
   | "admin_login_failed"
   | "admin_logout"
@@ -21,7 +25,7 @@ export type AuditAction =
 interface LogAuditParams {
   adminId?: string | null;
   action: AuditAction;
-  entityType: "order" | "package" | "notification" | "admin";
+  entityType: "order" | "package" | "notification" | "admin" | "payment_event";
   entityId?: string | null;
   metadata?: Record<string, unknown>;
 }

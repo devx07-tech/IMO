@@ -19,6 +19,7 @@ const FILTER_MAP: Record<string, OrderFilter> = {
 };
 
 const SEARCH_PHONE_RE = /^[6-9]\d{9}$/;
+const SEARCH_UTR_RE = /^\d{12}$/;
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin();
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
   let query = supabaseAdmin
     .from("orders")
     .select(
-      "id, order_number, imo_profile_id, credits, quantity, amount, customer_phone, payment_provider, provider_payment_id, payment_status, recharge_status, created_at, paid_at",
+      "id, order_number, imo_profile_id, credits, quantity, amount, customer_phone, payment_provider, provider_payment_id, customer_utr, payment_status, recharge_status, created_at, paid_at",
       { count: "exact" }
     )
     .order("created_at", { ascending: false })
@@ -48,7 +49,8 @@ export async function GET(request: NextRequest) {
     // Also matches a Razorpay payment id, or the customer's WhatsApp number.
     query = query.or(
       `order_number.ilike.%${search}%,imo_profile_id.ilike.%${search}%,provider_payment_id.eq.${search}` +
-        (SEARCH_PHONE_RE.test(search) ? `,customer_phone.eq.${search}` : "")
+        (SEARCH_PHONE_RE.test(search) ? `,customer_phone.eq.${search}` : "") +
+        (SEARCH_UTR_RE.test(search) ? `,customer_utr.eq.${search}` : "")
     );
   }
 
