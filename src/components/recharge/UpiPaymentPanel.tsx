@@ -95,12 +95,15 @@ export function UpiPaymentPanel({
 
       {device !== "desktop" && (
         <div className="mt-5 space-y-2">
-          {device === "android" && (
-            <a href={genericLink} className="flex w-full items-center justify-center gap-2 rounded-button bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-dark">
+          {/* Generic upi:// link: opens any installed UPI app (Android shows a chooser). */}
+          <a href={genericLink} className="flex w-full flex-col items-center justify-center rounded-button bg-accent px-4 py-3 text-white hover:bg-accent-dark">
+            <span className="flex items-center gap-2 text-sm font-semibold">
               <Smartphone className="h-4 w-4" aria-hidden="true" />
-              Pay ₹{amount} with UPI app
-            </a>
-          )}
+              Pay ₹{amount} with any UPI app
+            </span>
+            <span className="mt-0.5 text-[11px] text-white/80">BHIM, CRED, Amazon Pay, bank apps and more</span>
+          </a>
+          <p className="pt-1 text-center text-xs text-muted">Or open directly</p>
           <div className="grid grid-cols-3 gap-2">
             {APP_BUTTONS.map(({ app, label }) => (
               <a key={app} href={buildUpiLink(request, app)}
