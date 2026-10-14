@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { OrderDetailDrawer } from "@/components/admin/OrderDetailDrawer";
+import { paymentProviderLabel } from "@/lib/payment-provider";
 
 interface QueueOrder {
   id: string;
@@ -13,6 +14,8 @@ interface QueueOrder {
   credits: number;
   quantity: number;
   amount: number;
+  payment_provider: string;
+  paid_at: string | null;
   created_at: string;
 }
 
@@ -28,33 +31,53 @@ export default function RechargeQueuePage() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [totals, setTotals] = useState<Record<string, number>>({});
+  const loadVersion = useRef(0);
+  const invalidateLoads = useCallback(() => { ++loadVersion.current; }, []);
 
   const load = useCallback(() => {
+    const version = ++loadVersion.current;
     return Promise.all(
       SECTIONS.map((s) =>
         fetch(`/api/admin/orders?filter=${s.key}&limit=25`)
-          .then((res) => res.json())
-          .then((body) => [s.key, body.orders ?? []] as const)
+          .then(async (res) => { const body = await res.json(); if (!res.ok) throw new Error(body.error ?? "Could not load recharge queue."); return body; })
+          .then((body) => ({ key: s.key, orders: body.orders ?? [], total: body.total ?? 0 }))
       )
     )
-      .then((results) => setData(Object.fromEntries(results)))
-      .finally(() => setLoading(false));
+      .then((results) => {
+        if (version !== loadVersion.current) return;
+        setData(Object.fromEntries(results.map((result) => [result.key, result.orders])));
+        setTotals(Object.fromEntries(results.map((result) => [result.key, result.total])));
+        setError("");
+      })
+      .catch((err) => { if (version === loadVersion.current) setError(err instanceof Error ? err.message : "Could not load recharge queue."); })
+      .finally(() => { if (version === loadVersion.current) setLoading(false); });
   }, []);
 
   useEffect(() => {
     load();
-  }, [load]);
+    const refresh = () => { if (document.visibilityState === "visible") void load(); };
+    const interval = setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => { invalidateLoads(); clearInterval(interval); window.removeEventListener("focus", refresh); };
+  }, [load, invalidateLoads]);
 
   const runAction = async (orderId: string, action: string) => {
     setPending(orderId);
-    await fetch(`/api/admin/orders/${orderId}/recharge`, {
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/recharge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
-    });
-    setPending(null);
-    setLoading(true);
-    load();
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Recharge action failed.");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Recharge action failed.");
+    } finally { setPending(null); }
   };
 
   return (
@@ -62,12 +85,13 @@ export default function RechargeQueuePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground">Recharge Queue</h1>
-          <p className="text-sm text-muted">Paid orders requiring recharge work.</p>
+          <p className="text-sm text-muted">Confirmed paid orders only. Updates every 15 seconds.</p>
         </div>
         <Link href="/admin/orders" className="text-xs font-medium text-accent hover:underline">
           All orders
         </Link>
       </div>
+      {error && <p role="alert" className="text-sm text-error">{error}</p>}
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted">
@@ -80,7 +104,7 @@ export default function RechargeQueuePage() {
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-foreground">{section.title}</h2>
                 <span className="rounded-full bg-background px-2 py-0.5 text-xs font-medium text-muted">
-                  {data[section.key]?.length ?? 0}
+                  {totals[section.key] ?? 0}
                 </span>
               </div>
 
@@ -99,6 +123,7 @@ export default function RechargeQueuePage() {
                           {order.order_number}
                         </p>
                         <p className="text-xs text-muted">IMO: {order.imo_profile_id}</p>
+                        <p className="text-xs text-muted">{paymentProviderLabel(order.payment_provider)} · Paid {order.paid_at ? formatDateTime(order.paid_at) : "—"}</p>
                         <p className="text-xs text-muted">
                           {order.credits.toLocaleString("en-IN")} × {order.quantity} ·{" "}
                           {formatCurrency(order.amount)}
@@ -109,7 +134,7 @@ export default function RechargeQueuePage() {
                       {section.action && (
                         <button
                           type="button"
-                          disabled={pending === order.id}
+                          disabled={pending !== null}
                           onClick={() => runAction(order.id, section.action!.action)}
                           className="mt-2 w-full rounded-button bg-accent px-2.5 py-1.5 text-xs font-semibold text-white transition-colors enabled:hover:bg-accent-dark disabled:opacity-60"
                         >
@@ -120,6 +145,7 @@ export default function RechargeQueuePage() {
                   ))}
                 </ul>
               )}
+              {(totals[section.key] ?? 0) > 25 && <p className="mt-3 text-xs text-muted">Showing the latest 25. Open All orders to manage older orders.</p>}
             </div>
           ))}
         </div>

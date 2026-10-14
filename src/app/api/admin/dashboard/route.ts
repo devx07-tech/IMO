@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/auth/current-admin";
+import { readPaidRevenue } from "@/lib/payment-summary";
 
 function todayBoundsIST(): { start: string; end: string } {
   const dateStr = new Intl.DateTimeFormat("en-CA", {
@@ -33,18 +34,13 @@ export async function GET() {
       .select("id", { count: "exact", head: true })
       .gte("created_at", start)
       .lte("created_at", end),
-    supabaseAdmin
-      .from("orders")
-      .select("amount")
-      .eq("payment_status", "paid")
-      .gte("paid_at", start)
-      .lte("paid_at", end),
+    readPaidRevenue(start, end),
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("payment_status", "paid")
-      .gte("created_at", start)
-      .lte("created_at", end),
+      .gte("paid_at", start)
+      .lte("paid_at", end),
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true })
@@ -53,14 +49,17 @@ export async function GET() {
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true })
+      .eq("payment_status", "paid")
       .eq("recharge_status", "processing"),
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true })
+      .eq("payment_status", "paid")
       .eq("recharge_status", "completed"),
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true })
+      .eq("payment_status", "paid")
       .eq("recharge_status", "failed"),
     supabaseAdmin
       .from("orders")
@@ -71,20 +70,20 @@ export async function GET() {
     supabaseAdmin
       .from("orders")
       .select(
-        "order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at"
+        "order_number, imo_profile_id, credits, quantity, amount, payment_provider, payment_status, recharge_status, created_at"
       )
       .order("created_at", { ascending: false })
       .limit(10),
   ]);
 
-  const todayRevenue = (todayPaidRes.data ?? []).reduce(
-    (sum, row) => sum + Number(row.amount),
-    0
-  );
+  if ([todayOrdersRes, todayPaidRes, paidOrdersRes, pendingRechargeRes, processingRechargeRes,
+    completedRechargeRes, failedRechargeRes, failedPaymentsRes, recentOrdersRes].some((result) => result.error)) {
+    return NextResponse.json({ error: "Failed to load dashboard." }, { status: 500 });
+  }
 
   return NextResponse.json({
     todayOrders: todayOrdersRes.count ?? 0,
-    todayRevenue,
+    todayRevenue: todayPaidRes.revenue,
     paidOrders: paidOrdersRes.count ?? 0,
     pendingRecharge: pendingRechargeRes.count ?? 0,
     processingRecharge: processingRechargeRes.count ?? 0,

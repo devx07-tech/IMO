@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PaymentFlowState, RechargeOrder, RechargePackage } from "@/lib/types";
-import { isValidPhone, isValidProfileId, sleep } from "@/lib/utils";
-import { openCashfreeCheckout } from "@/lib/cashfree-client";
+import { isValidProfileId, sleep } from "@/lib/utils";
+import { normalizeOrderNumber } from "@/lib/validation";
 import { ProfileIdInput } from "./ProfileIdInput";
 import { RechargePackages } from "./RechargePackages";
 import { QuantitySelector } from "./QuantitySelector";
@@ -41,11 +41,13 @@ function toRechargeOrder(api: VerifyOrderResponse): RechargeOrder {
   };
 }
 
-async function pollOrderStatus(orderNumber: string, attempts = 4): Promise<VerifyOrderResponse> {
+async function pollOrderStatus(orderNumber: string, attempts = 10, signal?: AbortSignal): Promise<VerifyOrderResponse> {
   let last: VerifyOrderResponse | null = null;
   for (let i = 0; i < attempts; i++) {
-    const res = await fetch(`/api/orders/verify?orderNumber=${encodeURIComponent(orderNumber)}`);
+    signal?.throwIfAborted();
+    const res = await fetch(`/api/orders/verify?orderNumber=${encodeURIComponent(orderNumber)}`, { cache: "no-store", signal });
     const body = await res.json();
+    if (!res.ok || !body.order) throw new Error(body.error ?? "Could not check payment status.");
     last = body.order as VerifyOrderResponse;
     if (last.paymentStatus !== "pending") return last;
     await sleep(1500);
@@ -62,6 +64,33 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   const [flowState, setFlowState] = useState<PaymentFlowState>("idle");
   const [currentOrder, setCurrentOrder] = useState<RechargeOrder | null>(null);
   const [submitError, setSubmitError] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const submitting = useRef(false);
+
+  useEffect(() => {
+    const orderNumber = normalizeOrderNumber(new URLSearchParams(window.location.search).get("order"));
+    if (!orderNumber) return;
+    const controller = new AbortController();
+    async function checkReturnedPayment() {
+      submitting.current = true;
+      setFlowState("verifying");
+      try {
+        const result = await pollOrderStatus(orderNumber!, 10, controller.signal);
+        if (controller.signal.aborted) return;
+        const order = toRechargeOrder(result);
+        setCurrentOrder(order);
+        setFlowState(order.paymentStatus === "paid" ? "success" : order.paymentStatus === "failed" ? "failed" : "pending");
+      } catch {
+        if (controller.signal.aborted) return;
+        setFlowState("idle");
+        setSubmitError(`Could not check payment. Use Order ID ${orderNumber} in Transaction History before paying again.`);
+      } finally {
+        if (!controller.signal.aborted) submitting.current = false;
+      }
+    }
+    void checkReturnedPayment();
+    return () => { controller.abort(); submitting.current = false; };
+  }, []);
 
   const selectedPackage = packages.find((p) => p.id === selectedPackageId) ?? null;
 
@@ -89,9 +118,11 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
   };
 
   const runPaymentFlow = async () => {
+    if (submitting.current) return;
     setSubmitError("");
     if (!validate() || !selectedPackage) return;
 
+    submitting.current = true;
     setFlowState("creating_order");
 
     let createRes: Response;
@@ -103,11 +134,12 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
           imoProfileId: profileId.trim(),
           packageId: selectedPackage.id,
           quantity,
-          ...(isValidPhone(profileId) ? { customerPhone: profileId.trim() } : {}),
+          customerEmail: customerEmail.trim(),
         }),
       });
     } catch {
       setFlowState("idle");
+      submitting.current = false;
       setSubmitError("Network error. Please check your connection and try again.");
       return;
     }
@@ -115,31 +147,28 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
     if (!createRes.ok) {
       const body = await createRes.json().catch(() => ({}));
       setFlowState("idle");
+      submitting.current = false;
       setSubmitError(body.error ?? "Could not start payment. Please try again.");
       return;
     }
 
-    const { orderNumber, paymentSessionId, cashfreeEnv } = await createRes.json();
-
-    setFlowState("awaiting_payment");
     try {
-      await openCashfreeCheckout(paymentSessionId, cashfreeEnv);
+      const { orderNumber, checkoutUrl } = await createRes.json();
+      const url = new URL(checkoutUrl);
+      if (url.origin !== "https://baseupi.app" || url.username || url.password || !normalizeOrderNumber(orderNumber)) {
+        throw new Error("Invalid checkout response.");
+      }
+      setFlowState("awaiting_payment");
+      // Preserve the order for browser Back as well as the provider redirect.
+      const returnUrl = new URL(window.location.href);
+      returnUrl.searchParams.set("order", orderNumber);
+      window.history.replaceState(null, "", returnUrl);
+      window.location.assign(url.href);
     } catch {
-      // fall through to verification regardless — Cashfree may still have processed the payment
+      submitting.current = false;
+      setFlowState("idle");
+      setSubmitError("Could not open checkout. Please try again.");
     }
-
-    setFlowState("verifying");
-    const result = await pollOrderStatus(orderNumber);
-    const order = toRechargeOrder(result);
-
-    setCurrentOrder(order);
-    setFlowState(
-      order.paymentStatus === "paid"
-        ? "success"
-        : order.paymentStatus === "failed"
-          ? "failed"
-          : "pending"
-    );
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -184,6 +213,16 @@ export function RechargeForm({ packages, onViewTransaction }: RechargeFormProps)
               }}
               error={profileIdError}
             />
+            <div>
+              <label htmlFor="customer-email" className="text-sm font-medium text-foreground">Email for payment</label>
+              <input
+                id="customer-email" type="email" required maxLength={254} autoComplete="email"
+                value={customerEmail} onChange={(event) => setCustomerEmail(event.target.value)}
+                placeholder="you@example.com"
+                className="mt-2 w-full rounded-input border border-border-strong bg-surface px-4 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
+              />
+              <p className="mt-1 text-xs text-muted">Used by BaseUPI for your payment checkout.</p>
+            </div>
           </div>
         </div>
 

@@ -3,6 +3,7 @@ export const BUSINESS = {
   brand: "IMO Recharge",
   domain: "kamalseller.com",
   siteUrl: "https://kamalseller.com",
+  upiReceiver: "kamal6382371168@okicici",
   address:
     "S/O Srinivasan, No 19/22, Patchaiyan Kadu, Vedaranyam Taluka, Maraignanallur, Nagapattinam, Tamil Nadu 614810, India",
   whatsappDisplay: "+91 63823 71168",

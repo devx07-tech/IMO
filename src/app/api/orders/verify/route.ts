@@ -3,6 +3,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { fetchCashfreeOrderStatus } from "@/lib/cashfree";
 import { sendOrderNotification } from "@/lib/notifications/service";
 import type { OrderRow } from "@/lib/db-types";
+import { normalizeOrderNumber } from "@/lib/validation";
+import { logAudit } from "@/lib/audit";
 
 function publicOrder(order: OrderRow) {
   return {
@@ -18,7 +20,7 @@ function publicOrder(order: OrderRow) {
 }
 
 export async function GET(request: NextRequest) {
-  const orderNumber = request.nextUrl.searchParams.get("orderNumber");
+  const orderNumber = normalizeOrderNumber(request.nextUrl.searchParams.get("orderNumber"));
   if (!orderNumber) {
     return NextResponse.json({ error: "orderNumber is required." }, { status: 400 });
   }
@@ -33,7 +35,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Order not found." }, { status: 404 });
   }
 
-  if (order.payment_status !== "pending") {
+  // BaseUPI payments are confirmed only by the signed webhook.
+  if (order.payment_status !== "pending" || order.payment_provider !== "cashfree") {
     return NextResponse.json({ order: publicOrder(order) });
   }
 
@@ -61,6 +64,8 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (updated) {
+      await logAudit({ action: "payment_confirmed", entityType: "order", entityId: updated.id,
+        metadata: { provider: "cashfree", source: "provider_status" } });
       await sendOrderNotification("order_paid", updated, "telegram");
       return NextResponse.json({ order: publicOrder(updated) });
     }

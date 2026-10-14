@@ -75,6 +75,7 @@ export async function POST(
     .update(updates)
     .eq("id", id)
     .eq("recharge_status", transition.from)
+    .eq("payment_status", "paid")
     .select()
     .maybeSingle();
 

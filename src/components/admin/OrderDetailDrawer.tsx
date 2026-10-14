@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Loader2, X } from "lucide-react";
 import { PaymentStatusBadge, RechargeStatusBadge } from "@/components/recharge/StatusBadge";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { OrderRow, AuditLogRow, NotificationRow } from "@/lib/db-types";
+import { useAdminData } from "@/lib/use-admin-data";
+import { paymentProviderLabel } from "@/lib/payment-provider";
 
 interface OrderDetailDrawerProps {
   orderId: string;
@@ -29,58 +31,45 @@ const RECHARGE_ACTIONS: Record<string, { action: string; label: string; tone: st
 };
 
 export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDrawerProps) {
-  const [data, setData] = useState<DetailResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notes, setNotes] = useState("");
+  const { data, loading, error, refresh: load } = useAdminData<DetailResponse>(`/api/admin/orders/${orderId}`);
+  const [draftNotes, setDraftNotes] = useState<string | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
 
-  const load = useCallback(() => {
-    fetch(`/api/admin/orders/${orderId}`)
-      .then((res) => res.json())
-      .then((body: DetailResponse) => {
-        setData(body);
-        setNotes(body.order?.admin_notes ?? "");
-      })
-      .finally(() => setLoading(false));
-  }, [orderId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const saveNotes = async () => {
     setSavingNotes(true);
-    await fetch(`/api/admin/orders/${orderId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminNotes: notes }),
-    });
-    setSavingNotes(false);
-    load();
-    onChanged?.();
+    setActionError("");
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminNotes: draftNotes ?? data?.order.admin_notes ?? "" }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not save note.");
+      await load();
+      setDraftNotes(null);
+      onChanged?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not save note.");
+    } finally { setSavingNotes(false); }
   };
 
   const runAction = async (action: string) => {
     setActionPending(action);
     setActionError("");
-    const res = await fetch(`/api/admin/orders/${orderId}/recharge`, {
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/recharge`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setActionError(body.error ?? "Action failed.");
-      setActionPending(null);
-      return;
-    }
-
-    setActionPending(null);
-    load();
-    onChanged?.();
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Action failed.");
+      await load(); onChanged?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Action failed.");
+    } finally { setActionPending(null); }
   };
 
   const order = data?.order;
@@ -89,9 +78,9 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <div className="absolute inset-0 bg-foreground/40" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-[460px] flex-col bg-surface shadow-card">
+      <div role="dialog" aria-modal="true" aria-labelledby="order-details-heading" className="relative flex h-full w-full max-w-[460px] flex-col bg-surface shadow-card">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold text-foreground">Order Details</h2>
+          <h2 id="order-details-heading" className="text-base font-semibold text-foreground">Order Details</h2>
           <button
             type="button"
             onClick={onClose}
@@ -103,11 +92,12 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {loading || !order ? (
+          {(error || actionError) && <p role="alert" className="mb-3 text-sm text-error">{actionError || error}</p>}
+          {loading ? (
             <div className="flex items-center justify-center py-16 text-muted">
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             </div>
-          ) : (
+          ) : !order ? <p className="text-sm text-muted">Order details are unavailable.</p> : (
             <div className="space-y-6">
               <section className="space-y-2.5 rounded-input border border-border bg-background px-4 py-3.5 text-sm">
                 <Row label="Order ID" value={order.order_number} />
@@ -116,7 +106,8 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                 <Row label="Quantity" value={String(order.quantity)} />
                 <Row label="Unit Price" value={formatCurrency(order.unit_price)} />
                 <Row label="Total" value={formatCurrency(order.amount)} strong />
-                <Row label="Payment Provider" value={order.payment_provider} />
+                <Row label="Payment Provider" value={paymentProviderLabel(order.payment_provider)} />
+                {order.provider_order_id && <Row label="Provider Order ID" value={order.provider_order_id} />}
                 <Row label="Payment Status" value={<PaymentStatusBadge status={order.payment_status} />} />
                 {order.provider_payment_id && (
                   <Row label="Provider Payment ID" value={order.provider_payment_id} />
@@ -126,6 +117,10 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                 {order.paid_at && <Row label="Paid" value={formatDateTime(order.paid_at)} />}
                 {order.completed_at && <Row label="Completed" value={formatDateTime(order.completed_at)} />}
               </section>
+
+              {order.payment_provider === "baseupi" && order.payment_status === "pending" && (
+                <p className="rounded-input bg-background p-3 text-xs text-muted">Waiting for a signed BaseUPI payment confirmation. Check the Android bridge if payment has reached your UPI account. This order cannot enter the recharge queue until payment is confirmed.</p>
+              )}
 
               {actions.length > 0 && (
                 <section>
@@ -145,7 +140,6 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                       </button>
                     ))}
                   </div>
-                  {actionError && <p className="mt-2 text-xs font-medium text-error">{actionError}</p>}
                 </section>
               )}
 
@@ -154,8 +148,9 @@ export function OrderDetailDrawer({ orderId, onClose, onChanged }: OrderDetailDr
                   Admin Notes
                 </p>
                 <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  aria-label="Admin notes"
+                  value={draftNotes ?? order.admin_notes ?? ""}
+                  onChange={(e) => setDraftNotes(e.target.value)}
                   rows={3}
                   className="w-full rounded-input border border-border-strong bg-surface px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
                   placeholder="Internal note for this order..."
@@ -229,7 +224,7 @@ function Row({ label, value, strong }: { label: string; value: ReactNode; strong
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-muted">{label}</span>
-      <span className={strong ? "text-base font-bold text-foreground" : "font-medium text-foreground"}>
+      <span className={strong ? "break-all text-right text-base font-bold text-foreground" : "break-all text-right font-medium text-foreground"}>
         {value}
       </span>
     </div>

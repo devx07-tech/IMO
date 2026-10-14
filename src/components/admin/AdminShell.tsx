@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ListOrdered,
+  CreditCard,
   Menu,
   PackageSearch,
   Bell,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/orders", label: "Orders", icon: ListOrdered },
+  { href: "/admin/payments", label: "Payments", icon: CreditCard },
   { href: "/admin/recharges", label: "Recharge Queue", icon: RefreshCcw },
   { href: "/admin/packages", label: "Packages", icon: PackageSearch },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },

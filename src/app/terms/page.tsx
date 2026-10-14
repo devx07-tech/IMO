@@ -42,8 +42,9 @@ export default function TermsPage() {
           title: "4. Prices and payment",
           body: (
             <p>
-              All prices are in Indian Rupees (₹). Payments are processed securely by Cashfree
-              Payments. Prices may change, but the price shown when you pay is the price you
+              All prices are in Indian Rupees (₹). UPI checkout and payment confirmation are
+              provided by BaseUPI, with payments sent directly to our UPI account.
+              Prices may change, but the price shown when you pay is the price you
               are charged.
             </p>
           ),

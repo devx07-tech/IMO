@@ -35,7 +35,7 @@ export function PaymentStatusModal({
 
         {flowState === "awaiting_payment" && (
           <LoadingState
-            title="Opening Cashfree checkout"
+            title="Opening BaseUPI checkout"
             subtitle="Redirecting you to complete payment..."
           />
         )}

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { PaymentStatus, RechargeStatus } from "@/lib/db-types";
 import { requireAdmin } from "@/lib/auth/current-admin";
 import { parseIntParam, sanitizeSearch } from "@/lib/validation";
+import { isPaymentProvider } from "@/lib/payment-provider";
 
 type OrderFilter =
   | { column: "payment_status"; value: PaymentStatus }
@@ -24,13 +25,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const filter = searchParams.get("filter") ?? "all";
   const search = sanitizeSearch(searchParams.get("search"));
+  const provider = searchParams.get("provider") ?? "all";
+  if (provider !== "all" && !isPaymentProvider(provider)) {
+    return NextResponse.json({ error: "Invalid payment provider." }, { status: 400 });
+  }
   const limit = Math.max(1, parseIntParam(searchParams.get("limit"), 50, 100));
   const offset = parseIntParam(searchParams.get("offset"), 0, 100_000);
 
   let query = supabaseAdmin
     .from("orders")
     .select(
-      "id, order_number, imo_profile_id, credits, quantity, amount, payment_status, recharge_status, created_at",
+      "id, order_number, imo_profile_id, credits, quantity, amount, payment_provider, provider_order_id, payment_status, recharge_status, created_at, paid_at",
       { count: "exact" }
     )
     .order("created_at", { ascending: false })
@@ -39,7 +44,9 @@ export async function GET(request: NextRequest) {
   const mapped = FILTER_MAP[filter];
   if (mapped) {
     query = query.eq(mapped.column, mapped.value);
+    if (mapped.column === "recharge_status") query = query.eq("payment_status", "paid");
   }
+  if (provider !== "all") query = query.eq("payment_provider", provider);
 
   if (search) {
     query = query.or(

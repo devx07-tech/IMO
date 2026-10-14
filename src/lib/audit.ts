@@ -2,6 +2,9 @@ import "server-only";
 import { supabaseAdmin } from "./supabase-admin";
 
 export type AuditAction =
+  | "payment_checkout_created"
+  | "payment_checkout_failed"
+  | "payment_confirmed"
   | "admin_login"
   | "admin_login_failed"
   | "admin_logout"

@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { PaymentStatusBadge, RechargeStatusBadge } from "@/components/recharge/StatusBadge";
 import { formatCurrency, formatDateTime, cn } from "@/lib/utils";
 import type { PaymentStatus, RechargeStatus } from "@/lib/types";
 import { OrderDetailDrawer } from "@/components/admin/OrderDetailDrawer";
+import { useAdminData } from "@/lib/use-admin-data";
+import { paymentProviderLabel } from "@/lib/payment-provider";
 
 interface OrderListItem {
   id: string;
@@ -14,6 +16,7 @@ interface OrderListItem {
   credits: number;
   quantity: number;
   amount: number;
+  payment_provider: string;
   payment_status: PaymentStatus;
   recharge_status: RechargeStatus;
   created_at: string;
@@ -33,32 +36,31 @@ const FILTERS: { key: string; label: string }[] = [
 export default function AdminOrdersPage() {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [orders, setOrders] = useState<OrderListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [provider, setProvider] = useState("all");
+  const [offset, setOffset] = useState(0);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  const loadOrders = useCallback(() => {
-    setLoading(true);
-    const params = new URLSearchParams({ filter });
-    if (search.trim()) params.set("search", search.trim());
-
-    fetch(`/api/admin/orders?${params.toString()}`)
-      .then((res) => res.json())
-      .then((data) => setOrders(data.orders ?? []))
-      .finally(() => setLoading(false));
-  }, [filter, search]);
-
-  useEffect(() => {
-    const timeout = setTimeout(loadOrders, 250);
-    return () => clearTimeout(timeout);
-  }, [loadOrders]);
+  const params = new URLSearchParams({ filter, provider, offset: String(offset), limit: "50" });
+  if (search.trim()) params.set("search", search.trim());
+  const { data, loading, error, refresh: loadOrders } = useAdminData<{ orders: OrderListItem[]; total: number }>(`/api/admin/orders?${params}`);
+  const orders = data?.orders ?? [];
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-foreground">Orders</h1>
         <p className="text-sm text-muted">All recharge orders, searchable by Order ID or Profile ID.</p>
+        <p className="mt-1 text-xs text-muted">Payment updates refresh every 15 seconds.</p>
       </div>
+
+      <div className="flex items-center gap-3">
+        <label htmlFor="provider-filter" className="text-sm text-muted">Payment provider</label>
+        <select id="provider-filter" value={provider} onChange={(event) => { setProvider(event.target.value); setOffset(0); }} className="rounded-input border border-border-strong bg-surface px-3 py-2 text-sm text-foreground">
+          <option value="all">All providers</option><option value="baseupi">BaseUPI</option><option value="cashfree">Cashfree</option>
+        </select>
+        <button type="button" onClick={() => void loadOrders()} className="text-xs font-semibold text-accent hover:underline">Refresh</button>
+      </div>
+      {error && <p role="alert" className="text-sm text-error">{error}</p>}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-1.5">
@@ -66,7 +68,7 @@ export default function AdminOrdersPage() {
             <button
               key={f.key}
               type="button"
-              onClick={() => setFilter(f.key)}
+              onClick={() => { setFilter(f.key); setOffset(0); }}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                 filter === f.key
@@ -85,7 +87,7 @@ export default function AdminOrdersPage() {
             type="text"
             placeholder="Search Order ID or Profile ID"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
             className="w-full rounded-input border border-border-strong bg-surface py-2 pl-9 pr-3 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/40"
           />
         </div>
@@ -107,6 +109,7 @@ export default function AdminOrdersPage() {
                   <th className="px-4 py-3 font-medium">Profile ID</th>
                   <th className="px-4 py-3 font-medium">Recharge</th>
                   <th className="px-4 py-3 font-medium">Amount</th>
+                  <th className="px-4 py-3 font-medium">Provider</th>
                   <th className="px-4 py-3 font-medium">Payment</th>
                   <th className="px-4 py-3 font-medium">Recharge</th>
                   <th className="px-4 py-3 font-medium">Date</th>
@@ -122,6 +125,7 @@ export default function AdminOrdersPage() {
                       {order.credits.toLocaleString("en-IN")} × {order.quantity}
                     </td>
                     <td className="px-4 py-3 text-foreground">{formatCurrency(order.amount)}</td>
+                    <td className="px-4 py-3 text-foreground">{paymentProviderLabel(order.payment_provider)}</td>
                     <td className="px-4 py-3">
                       <PaymentStatusBadge status={order.payment_status} />
                     </td>
@@ -144,6 +148,14 @@ export default function AdminOrdersPage() {
             </table>
           </div>
         )}
+      </div>
+
+      <div className="flex items-center justify-between gap-3 text-xs text-muted">
+        <span>{data?.total ?? 0} matching orders{orders.length > 0 ? ` · Showing ${offset + 1}–${offset + orders.length}` : ""}</span>
+        <div className="flex gap-3">
+          <button type="button" disabled={offset === 0 || loading} onClick={() => setOffset((value) => Math.max(0, value - 50))} className="font-semibold text-accent disabled:opacity-40">Previous</button>
+          <button type="button" disabled={loading || offset + 50 >= (data?.total ?? 0)} onClick={() => setOffset((value) => value + 50)} className="font-semibold text-accent disabled:opacity-40">Next</button>
+        </div>
       </div>
 
       {selectedOrderId && (

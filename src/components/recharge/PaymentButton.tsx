@@ -35,7 +35,7 @@ export function PaymentButton({ flowState }: PaymentButtonProps) {
       </button>
 
       <p className="mt-2.5 text-center text-xs text-muted">
-        Secure payment powered by Cashfree
+        UPI payment powered by BaseUPI
       </p>
     </div>
   );

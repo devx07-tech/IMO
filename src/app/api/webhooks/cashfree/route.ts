@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { verifyCashfreeWebhookSignature } from "@/lib/cashfree";
 import { sendOrderNotification } from "@/lib/notifications/service";
+import { logAudit } from "@/lib/audit";
 
 interface CashfreeWebhookPayload {
   type: string;
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
     .from("orders")
     .select("*")
     .eq("order_number", orderNumber)
+    .eq("payment_provider", "cashfree")
     .maybeSingle();
 
   if (fetchError || !order) {
@@ -84,6 +86,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (updated) {
+      await logAudit({ action: "payment_confirmed", entityType: "order", entityId: updated.id,
+        metadata: { provider: "cashfree", source: "signed_webhook", providerPaymentId: updated.provider_payment_id } });
       await sendOrderNotification("order_paid", updated, "telegram");
     }
     return NextResponse.json({ ok: true });

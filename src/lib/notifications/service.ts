@@ -4,6 +4,7 @@ import type { OrderRow } from "../db-types";
 import { TelegramProvider } from "./telegram-provider";
 import { FutureWhatsAppProvider } from "./whatsapp-provider";
 import type { NotificationEvent, NotificationProvider } from "./types";
+import { paymentProviderLabel } from "../payment-provider";
 
 const providers: Record<string, NotificationProvider> = {
   telegram: new TelegramProvider(),
@@ -31,6 +32,8 @@ function buildMessage(event: NotificationEvent, order: OrderRow, timestampIso: s
       `Quantity: ${order.quantity}`,
       `Amount: ₹${order.amount}`,
       `Payment: ${order.payment_status.toUpperCase()}`,
+      `Provider: ${paymentProviderLabel(order.payment_provider)}`,
+      ...(order.provider_order_id ? [`Provider order: ${order.provider_order_id}`] : []),
       `Recharge: ${order.recharge_status.toUpperCase()}`,
       "",
       formatTimestamp(timestampIso),

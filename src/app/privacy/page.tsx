@@ -34,7 +34,7 @@ const sections: LegalSection[] = [
         </li>
         <li>
           <strong>Payment status information:</strong> payments are processed by our payment
-          partner, Cashfree Payments. We receive the outcome of the payment (paid, failed or
+          partner, BaseUPI. We receive the outcome of the payment (paid, failed or
           pending) and a reference ID. We never see or store your card number, UPI PIN, or
           net-banking credentials.
         </li>
@@ -77,7 +77,8 @@ const sections: LegalSection[] = [
         <p>We share information only with service providers needed to run the service:</p>
         <ul className="mt-2 list-disc space-y-1.5 pl-5">
           <li>
-            <strong>Cashfree Payments</strong> — to process your payment. Their handling of your
+            <strong>BaseUPI</strong> — to provide UPI checkout and payment confirmation. Your
+            email and order amount are sent to BaseUPI. Their handling of your
             payment data is governed by their own privacy policy.
           </li>
           <li>
@@ -110,7 +111,7 @@ const sections: LegalSection[] = [
     title: "7. Security",
     body: (
       <p>
-        Payments run over encrypted (HTTPS) connections through Cashfree. Order data is stored
+        Checkout runs over encrypted (HTTPS) connections through BaseUPI. Order data is stored
         with access restricted to authorised administrators. No online service can guarantee
         absolute security, but we take reasonable steps to protect your information.
       </p>
@@ -121,7 +122,7 @@ const sections: LegalSection[] = [
     body: (
       <p>
         The public recharge pages do not use advertising or tracking cookies. The administrator
-        area uses a session cookie to keep authorised staff signed in. Cashfree may set its own
+        area uses a session cookie to keep authorised staff signed in. BaseUPI may set its own
         cookies during checkout to complete and secure your payment.
       </p>
     ),

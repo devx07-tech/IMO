@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@cashfreepayments/cashfree-js": "^1.0.7",
+    "@snc0x/baseupi": "1.4.0",
     "@supabase/supabase-js": "^2.117.3",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
