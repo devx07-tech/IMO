@@ -153,7 +153,24 @@ The order enters the recharge queue and Telegram gets the alert (IMO ID, diamond
 customer WhatsApp). The admin credits the diamonds in IMO, marks the order completed and taps
 **WhatsApp** to send the customer a ready-made message with a link to their purchase history
 (`/?history=<IMO ID>`). Opened inside IMO, WhatsApp, Instagram or Facebook on Android, the
-site moves itself to Chrome so UPI apps can open; iOS shows instructions to open in Safari.
+site attempts to open Chrome so UPI apps can open; iOS attempts to open Safari.
+The host app may block either request, so the site also provides an explicit browser
+button, menu instructions, and a copyable link.
+
+### Sharing a browser-opening link in IMO
+
+After deploying, share **https://kamalseller.com/open**. This lightweight page tries
+to open the recharge homepage in Chrome on Android or Safari on iPhone, even when
+the host app hides its identity. It preserves query parameters and the URL fragment
+(for example `/open?history=123456789#transaction-history`). It does not need the
+database to show instructions. Desktop visitors continue to the recharge homepage.
+
+If IMO blocks the launch, the visitor can tap **Open in Chrome / Safari**, use IMO's
+**Open in browser** menu option, or copy the website link. The fallback URL prevents
+automatic redirect loops; other buttons and form taps never trigger a browser launch.
+An HTTPS link cannot force IMO to launch another app, and this cannot help if IMO
+refuses to load any HTML from the site. Test the shared link on real Android and
+iPhone devices inside IMO before sending it to customers.
 
 ### Razorpay setup
 
