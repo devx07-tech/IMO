@@ -82,20 +82,21 @@ function text(value: unknown): string | null {
 
 /**
  * Reads a status response. The live API wraps the transaction in `result`
- * ({ status: "COMPLETED", result: { txnStatus, orderId, amount, ... } }) while
- * the docs show a flat { status, order_id, amount, UTR }; both are accepted.
- * Only an explicit SUCCESS counts as paid.
+ * ({ status: "COMPLETED", result: { txnStatus, status, orderId, amount, utr } })
+ * while the docs show a flat { status, order_id, amount, UTR }; both are
+ * accepted. A paid order reads txnStatus "COMPLETED" with status "SUCCESS", so
+ * both fields are checked, and only an explicit SUCCESS counts as paid.
  */
 export function parseGatewayStatus(json: unknown): GatewayStatus {
   const root = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
   const result = root.result && typeof root.result === "object" ? (root.result as Record<string, unknown>) : null;
   const txn = result ?? root;
-  const status = (text(txn.txnStatus) ?? text(txn.status) ?? "").toUpperCase();
+  const statuses = [text(txn.status), text(txn.txnStatus)].map((s) => (s ?? "").toUpperCase());
   const amount = text(txn.amount);
   const state: GatewayState =
     !result && /not found/i.test(text(root.message) ?? "") ? "not_found"
-      : status === "SUCCESS" ? "success"
-        : ["FAILURE", "FAILED", "EXPIRED", "CANCELLED"].includes(status) ? "failed"
+      : statuses.includes("SUCCESS") ? "success"
+        : statuses.some((s) => ["FAILURE", "FAILED", "EXPIRED", "CANCELLED"].includes(s)) ? "failed"
           : "pending";
   return {
     state,

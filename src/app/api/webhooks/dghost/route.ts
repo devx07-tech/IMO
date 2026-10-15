@@ -13,11 +13,14 @@ async function callbackOrderId(request: NextRequest): Promise<string | null> {
   if (request.method !== "POST") return fromQuery;
   const raw = await request.text();
   try {
-    const json = JSON.parse(raw) as { order_id?: unknown; orderId?: unknown };
-    const id = json?.order_id ?? json?.orderId;
+    type Ids = { order_id?: unknown; orderId?: unknown };
+    const json = JSON.parse(raw) as Ids & { result?: Ids };
+    // Flat, or wrapped in `result` like the status API.
+    const id = json?.order_id ?? json?.orderId ?? json?.result?.order_id ?? json?.result?.orderId;
     if (typeof id === "string") return id;
   } catch { /* not JSON */ }
-  return new URLSearchParams(raw).get("order_id") ?? fromQuery;
+  const form = new URLSearchParams(raw);
+  return form.get("order_id") ?? form.get("orderId") ?? fromQuery;
 }
 
 /**

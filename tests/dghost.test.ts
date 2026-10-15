@@ -28,7 +28,14 @@ const liveStatus = (txnStatus: string, extra: Record<string, unknown> = {}) => (
     date: "2026-10-14 22:52:23", ...extra,
   },
 });
-const success = parseGatewayStatus(liveStatus("SUCCESS", { UTR: "416802195610", paymentApp: "Paytm" }));
+// A paid order, verbatim from the live API: txnStatus says COMPLETED, status says SUCCESS.
+const liveSuccess = (extra: Record<string, unknown> = {}) => ({
+  status: "COMPLETED", message: "Transaction Successfully", result: {
+    txnStatus: "COMPLETED", resultInfo: "Transaction Success", orderId: order.order_number, status: "SUCCESS",
+    amount: 176, date: "2026-10-15 00:21:00", utr: "416802195610", ...extra,
+  },
+});
+const success = parseGatewayStatus(liveSuccess({ paymentApp: "Paytm" }));
 const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status }));
 const sentForm = (call: number) => new URLSearchParams(String(mocks.fetch.mock.calls[call][1].body));
 
@@ -55,6 +62,7 @@ describe("parseGatewayStatus", () => {
       .toEqual({ state: "success", orderId: "IMO-ABCDE12345", amountPaise: 100, utr: "416802195610", paymentApp: "Paytm" });
   });
   it("never reads 'COMPLETED' or a missing order as paid", () => {
+    expect(parseGatewayStatus(liveStatus("COMPLETED")).state).toBe("pending");
     expect(parseGatewayStatus({ status: "COMPLETED", message: "Order not found", result: null }).state).toBe("not_found");
     expect(parseGatewayStatus(null).state).toBe("pending");
   });
@@ -140,9 +148,16 @@ describe("webhook", () => {
   });
   it("marks the order paid when the gateway confirms it (JSON callback)", async () => {
     db.fake.queue("orders", { data: order }, { data: { ...order, payment_status: "paid" } });
-    mocks.fetch.mockReturnValueOnce(json(liveStatus("SUCCESS", { UTR: "416802195610" })));
+    mocks.fetch.mockReturnValueOnce(json(liveSuccess()));
     const res = await callback(JSON.stringify({ status: "SUCCESS", order_id: "IMO-ABCDE12345" }), "application/json");
     expect(await res.json()).toEqual({ ok: true, paymentStatus: "paid" });
+  });
+  it("finds the order id when the callback wraps it in result", async () => {
+    db.fake.queue("orders", { data: order }, { data: { ...order, payment_status: "paid" } });
+    mocks.fetch.mockReturnValueOnce(json(liveSuccess()));
+    const res = await callback(JSON.stringify(liveSuccess()), "application/json");
+    expect(await res.json()).toEqual({ ok: true, paymentStatus: "paid" });
+    expect(sentForm(0).get("order_id")).toBe("IMO-ABCDE12345");
   });
   it("ignores orders that aren't this site's gateway orders without calling the gateway", async () => {
     expect((await callback("order_id=not-ours")).status).toBe(200);
@@ -157,7 +172,7 @@ describe("customer returning from the payment page", () => {
 
   it("asks the gateway and confirms the payment", async () => {
     db.fake.queue("orders", { data: order }, { data: { ...order, payment_status: "paid", provider_order_id: PAYMENT_URL } });
-    mocks.fetch.mockReturnValueOnce(json(liveStatus("SUCCESS", { UTR: "416802195610" })));
+    mocks.fetch.mockReturnValueOnce(json(liveSuccess()));
     const body = await (await check()).json();
     expect(body.order).toMatchObject({ paymentStatus: "paid", gateway: null });
   });
