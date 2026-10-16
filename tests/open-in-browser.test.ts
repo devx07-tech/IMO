@@ -39,17 +39,17 @@ describe("external browser handoff", () => {
   });
 
   it("preserves order/history links while removing the fallback marker and /open", () => {
-    expect(browserDestination("https://kamalseller.com/open?history=123456789&_inapp=1#transaction-history"))
-      .toBe("https://kamalseller.com/?history=123456789#transaction-history");
-    expect(browserDestination("https://kamalseller.com/contact?from=imo"))
-      .toBe("https://kamalseller.com/contact?from=imo");
+    expect(browserDestination("https://kamalseller.shop/open?history=123456789&_inapp=1#transaction-history"))
+      .toBe("https://kamalseller.shop/?history=123456789#transaction-history");
+    expect(browserDestination("https://kamalseller.shop/contact?from=imo"))
+      .toBe("https://kamalseller.shop/contact?from=imo");
   });
 
   it.each([
-    [androidImo, "https://kamalseller.com/?order=IMO-ABCDE12345"],
-    [iphoneImo, "https://kamalseller.com/?history=123456789#transaction-history"],
-    [androidChrome, "https://kamalseller.com/open?history=123456789#transaction-history"],
-    [iphoneSafari, "https://kamalseller.com/open/"],
+    [androidImo, "https://kamalseller.shop/?order=IMO-ABCDE12345"],
+    [iphoneImo, "https://kamalseller.shop/?history=123456789#transaction-history"],
+    [androidChrome, "https://kamalseller.shop/open?history=123456789#transaction-history"],
+    [iphoneSafari, "https://kamalseller.shop/open/"],
     [androidImo, "http://localhost:3000/open"],
   ])("makes the automatic script and manual link agree for %s at %s", (ua, href) => {
     const context = detectBrowserContext(ua, /^\/open\/?$/.test(new URL(href).pathname));
@@ -61,19 +61,19 @@ describe("external browser handoff", () => {
   });
 
   it("returns to the instructions with a marker if Chrome cannot launch", () => {
-    const href = "https://kamalseller.com/open?order=IMO-ABCDE12345";
+    const href = "https://kamalseller.shop/open?order=IMO-ABCDE12345";
     const intent = externalBrowserUrl("android-in-app", { href })!;
     const fallback = decodeURIComponent(intent.split("S.browser_fallback_url=")[1].split(";end")[0]);
     expect(fallback).toBe(`${href}&_inapp=1`);
     const { location } = runScript(androidImo, fallback);
     expect(location.href).toBe(fallback);
     expect(location.replace).not.toHaveBeenCalled();
-    expect(externalBrowserUrl("android-in-app", { href: fallback })).toContain("intent://kamalseller.com/?order=IMO-ABCDE12345#Intent;");
+    expect(externalBrowserUrl("android-in-app", { href: fallback })).toContain("intent://kamalseller.shop/?order=IMO-ABCDE12345#Intent;");
   });
 
   it.each([androidChrome, iphoneSafari, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"])(
     "leaves ordinary browser visits alone: %s", (ua) => {
-      const href = "https://kamalseller.com/";
+      const href = "https://kamalseller.shop/";
       const { location } = runScript(ua, href);
       expect(location.href).toBe(href);
       expect(location.replace).not.toHaveBeenCalled();
@@ -81,12 +81,12 @@ describe("external browser handoff", () => {
   );
 
   it("sends desktop /open visitors to the homepage with their order intact", () => {
-    const { location } = runScript("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "https://kamalseller.com/open?order=IMO-ABCDE12345");
-    expect(location.replace).toHaveBeenCalledWith("https://kamalseller.com/?order=IMO-ABCDE12345");
+    const { location } = runScript("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "https://kamalseller.shop/open?order=IMO-ABCDE12345");
+    expect(location.replace).toHaveBeenCalledWith("https://kamalseller.shop/?order=IMO-ABCDE12345");
   });
 
   it("does not launch a browser from admin pages", () => {
-    const href = "https://kamalseller.com/admin/login";
+    const href = "https://kamalseller.shop/admin/login";
     const { location } = runScript(androidImo, href);
     expect(location.href).toBe(href);
     expect(location.replace).not.toHaveBeenCalled();

@@ -104,7 +104,7 @@ describe("confirmRazorpayPayment", () => {
 describe("webhook route", () => {
   const event = (name: string, entity: unknown = payment) => JSON.stringify({ event: name, payload: { payment: { entity } } });
   const request = (body: string, signature = hmac(WEBHOOK_SECRET, body)) =>
-    new NextRequest("https://kamalseller.com/api/webhooks/razorpay", { method: "POST", body, headers: { "x-razorpay-signature": signature } });
+    new NextRequest("https://kamalseller.shop/api/webhooks/razorpay", { method: "POST", body, headers: { "x-razorpay-signature": signature } });
 
   it("rejects forged webhooks before touching the database", async () => {
     expect((await webhook(request(event("payment.captured"), "a".repeat(64)))).status).toBe(401);
@@ -124,7 +124,7 @@ describe("webhook route", () => {
 });
 
 describe("checkout callback", () => {
-  const url = "https://kamalseller.com/api/orders/pay";
+  const url = "https://kamalseller.shop/api/orders/pay";
   const body = (signature: string) => ({ orderNumber: order.order_number, razorpay_order_id: "order_TEST1", razorpay_payment_id: "pay_TEST1", razorpay_signature: signature });
   it("rejects a bad signature without calling Razorpay", async () => {
     expect((await pay(post(url, body("a".repeat(64))))).status).toBe(400);
@@ -142,7 +142,7 @@ describe("checkout callback", () => {
 
 describe("order creation", () => {
   beforeEach(() => vi.stubEnv("PAYMENT_MODE", "razorpay"));
-  const url = "https://kamalseller.com/api/orders";
+  const url = "https://kamalseller.shop/api/orders";
   const input = { imoProfileId: "46523623", packageId: "6f1c1b7e-3c2a-4d8e-9a55-0d6f1d2b7c11", quantity: 1, whatsapp: "9876543210" };
   it("treats the WhatsApp number as optional but rejects an invalid one", async () => {
     expect((await createOrder(post(url, { ...input, whatsapp: "12345" }))).status).toBe(400);
@@ -170,7 +170,7 @@ describe("order creation", () => {
 });
 
 describe("purchase history lookup", () => {
-  const get = (q: string) => lookup(new NextRequest(`https://kamalseller.com/api/orders/lookup?q=${encodeURIComponent(q)}`));
+  const get = (q: string) => lookup(new NextRequest(`https://kamalseller.shop/api/orders/lookup?q=${encodeURIComponent(q)}`));
   it("finds paid orders by IMO ID or WhatsApp number", async () => {
     db.fake.queue("orders", { data: [{ ...order, payment_status: "paid", paid_at: null, completed_at: null, created_at: "2026-10-14T00:00:00Z" }] });
     const res = await get("+91 98765 43210");

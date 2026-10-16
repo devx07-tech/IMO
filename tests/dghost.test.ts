@@ -43,7 +43,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   db.fake = createFakeSupabase();
   vi.stubEnv("DGHOST_USER_TOKEN", "test_user_token");
-  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
   vi.stubEnv("PAYMENT_MODE", "");
   vi.stubGlobal("fetch", mocks.fetch);
 });
@@ -97,7 +96,7 @@ describe("confirmGatewayPayment", () => {
 });
 
 describe("order creation", () => {
-  const url = "https://kamalseller.com/api/orders";
+  const url = "https://kamalseller.shop/api/orders";
   const input = { imoProfileId: "46523623", packageId: "6f1c1b7e-3c2a-4d8e-9a55-0d6f1d2b7c11", quantity: 1 };
   const post = (body: unknown) => new NextRequest(url, { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
   const echoOrder = (paymentUrl = PAYMENT_URL) => mocks.fetch.mockImplementationOnce((_url: string, init: { body: URLSearchParams }) =>
@@ -118,7 +117,7 @@ describe("order creation", () => {
     const form = sentForm(0);
     expect(Object.fromEntries(form)).toMatchObject({
       user_token: "test_user_token", amount: "176.00", customer_mobile: "6382371168", expiry_seconds: "1800",
-      redirect_url: `https://kamalseller.com/?order=${form.get("order_id")}`,
+      redirect_url: `https://kamalseller.shop/?order=${form.get("order_id")}`,
     });
     const insert = db.fake.on("orders").find((q) => q.calls[0][0] === "insert")!;
     expect(insert.calls[0][1]).toMatchObject({ amount: 176, payment_provider: "dghost", payment_status: "pending" });
@@ -135,7 +134,7 @@ describe("order creation", () => {
 
 describe("webhook", () => {
   const callback = (body: string, type = "application/x-www-form-urlencoded") =>
-    webhook(new NextRequest("https://kamalseller.com/api/webhooks/dghost", { method: "POST", body, headers: { "Content-Type": type } }));
+    webhook(new NextRequest("https://kamalseller.shop/api/webhooks/dghost", { method: "POST", body, headers: { "Content-Type": type } }));
 
   it("confirms from the status API, not from the callback body", async () => {
     db.fake.queue("orders", { data: order });
@@ -168,7 +167,7 @@ describe("webhook", () => {
 });
 
 describe("customer returning from the payment page", () => {
-  const check = () => verify(new NextRequest("https://kamalseller.com/api/orders/verify?orderNumber=IMO-ABCDE12345&sync=1"));
+  const check = () => verify(new NextRequest("https://kamalseller.shop/api/orders/verify?orderNumber=IMO-ABCDE12345&sync=1"));
 
   it("asks the gateway and confirms the payment", async () => {
     db.fake.queue("orders", { data: order }, { data: { ...order, payment_status: "paid", provider_order_id: PAYMENT_URL } });

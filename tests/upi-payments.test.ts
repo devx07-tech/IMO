@@ -26,7 +26,7 @@ const order = {
 };
 
 function bridgeRequest(body: string, token = SECRET) {
-  return new NextRequest("https://kamalseller.com/api/payments/upi-notify", {
+  return new NextRequest("https://kamalseller.shop/api/payments/upi-notify", {
     method: "POST", body, headers: { authorization: `Bearer ${token}` },
   });
 }
@@ -92,7 +92,7 @@ describe("payment bridge endpoint", () => {
 });
 
 describe("customer UTR submission", () => {
-  const url = "https://kamalseller.com/api/orders/utr";
+  const url = "https://kamalseller.shop/api/orders/utr";
   it("rejects malformed UTRs", async () => {
     expect((await submitUtr(jsonRequest(url, { orderNumber: order.order_number, utr: "123" }))).status).toBe(400);
     expect(db.fake.queries).toHaveLength(0);
@@ -123,7 +123,7 @@ describe("customer UTR submission", () => {
 
 describe("order creation", () => {
   beforeEach(() => vi.stubEnv("PAYMENT_MODE", "upi"));
-  const url = "https://kamalseller.com/api/orders";
+  const url = "https://kamalseller.shop/api/orders";
   const body = { imoProfileId: "1234567", packageId: "6f1c1b7e-3c2a-4d8e-9a55-0d6f1d2b7c11", quantity: 1, whatsapp: "9876543210" };
   it("reserves a unique amount 1-99 paise below the package total", async () => {
     db.fake.queue("packages", { data: { id: body.packageId, credits: 10, price: 30 } });
@@ -159,7 +159,7 @@ describe("order status", () => {
   it("expires an unpaid order after its payment window", async () => {
     const stale = { ...order, expires_at: new Date(Date.now() - 1000).toISOString() };
     db.fake.queue("orders", { data: stale }, { data: { ...stale, payment_status: "failed" } });
-    const res = await verify(new NextRequest(`https://kamalseller.com/api/orders/verify?orderNumber=${order.order_number}`));
+    const res = await verify(new NextRequest(`https://kamalseller.shop/api/orders/verify?orderNumber=${order.order_number}`));
     const body = await res.json();
     expect(body.order.paymentStatus).toBe("failed");
     expect(body.order.payment).toBeNull();
@@ -167,7 +167,7 @@ describe("order status", () => {
 });
 
 describe("customer cancel", () => {
-  const url = "https://kamalseller.com/api/orders/cancel";
+  const url = "https://kamalseller.shop/api/orders/cancel";
   it("cancels only an unpaid order with no reported payment", async () => {
     db.fake.queue("orders", { data: { id: "row-1" } });
     const res = await cancelOrder(jsonRequest(url, { orderNumber: order.order_number }));
@@ -193,25 +193,25 @@ describe("admin payment decisions", () => {
   const context = { params: Promise.resolve({ id: "row-1" }) };
   it("requires an admin", async () => {
     mocks.auth.mockResolvedValue({ response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) });
-    expect((await decide(jsonRequest("https://kamalseller.com/x", { action: "approve" }), context)).status).toBe(401);
+    expect((await decide(jsonRequest("https://kamalseller.shop/x", { action: "approve" }), context)).status).toBe(401);
   });
   it("approves with the customer's UTR", async () => {
     const claimed = { ...order, customer_utr: "412345678901" };
     db.fake.queue("orders", { data: claimed }, { data: { ...claimed, payment_status: "paid", provider_payment_id: "412345678901" } });
     db.fake.queue("upi_payment_events", { data: null });
-    const res = await decide(jsonRequest("https://kamalseller.com/x", { action: "approve" }), context);
+    const res = await decide(jsonRequest("https://kamalseller.shop/x", { action: "approve" }), context);
     expect(res.status).toBe(200);
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: "payment_confirmed", adminId: "admin-1" }));
   });
   it("refuses to approve when the UTR already paid another order", async () => {
     db.fake.queue("orders", { data: { ...order, customer_utr: "412345678901" } }, { error: { code: "23505" } });
     db.fake.queue("upi_payment_events", { data: null });
-    expect((await decide(jsonRequest("https://kamalseller.com/x", { action: "approve" }), context)).status).toBe(409);
+    expect((await decide(jsonRequest("https://kamalseller.shop/x", { action: "approve" }), context)).status).toBe(409);
   });
   it("never attaches a received payment smaller than the order", async () => {
     db.fake.queue("upi_payment_events", { data: { id: "evt-1", status: "unmatched", amount: 10, utr: null } });
     db.fake.queue("orders", { data: order });
-    const res = await resolveEvent(jsonRequest("https://kamalseller.com/x", { action: "attach", orderNumber: order.order_number }), { params: Promise.resolve({ id: "evt-1" }) });
+    const res = await resolveEvent(jsonRequest("https://kamalseller.shop/x", { action: "attach", orderNumber: order.order_number }), { params: Promise.resolve({ id: "evt-1" }) });
     expect(res.status).toBe(409);
   });
 });

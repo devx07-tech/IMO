@@ -7,6 +7,7 @@ import { activePaymentMode, UPI_PROVIDER } from "@/lib/payment-provider";
 import { bridgeConfigured, bridgeLastSeen } from "@/lib/upi-payments";
 import { razorpayConfigured, razorpayMode } from "@/lib/razorpay";
 import { gatewayConfigured } from "@/lib/dghost";
+import { syncPendingGatewayOrders } from "@/lib/payments";
 
 const ORDER_FIELDS =
   "id, order_number, imo_profile_id, credits, quantity, amount, customer_phone, payment_provider, payment_status, recharge_status, provider_payment_id, customer_utr, customer_utr_at, expires_at, paid_at, created_at";
@@ -14,6 +15,8 @@ const ORDER_FIELDS =
 export async function GET() {
   const auth = await requireAdmin();
   if (auth.response) return auth.response;
+  // Picks up gateway payments whose callback never reached us.
+  await syncPendingGatewayOrders().catch((err) => console.error("Pending gateway sweep failed", err));
   const count = (status: PaymentStatus) => supabaseAdmin.from("orders")
     .select("id", { count: "exact", head: true }).eq("payment_status", status);
   const results = await Promise.all([
@@ -31,10 +34,10 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to load payment overview." }, { status: 500 });
   }
   const [pending, paid, failed, review, unmatched, recent] = results;
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? BUSINESS.siteUrl).replace(/\/$/, "");
+  const siteUrl = BUSINESS.siteUrl;
   return NextResponse.json({
     mode: activePaymentMode(),
-    telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID),
+    telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID?.trim()),
     upi: {
       payeeName: BUSINESS.upi.payeeName,
       merchantId: BUSINESS.upi.merchantId,

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Header } from "@/components/recharge/Header";
 import { Footer } from "@/components/recharge/Footer";
 import { OpenInBrowserNotice } from "@/components/recharge/OpenInBrowserNotice";
+import { BUSINESS } from "@/lib/business";
 
 export const metadata: Metadata = {
   title: "Open Kamal Seller in your browser",
@@ -17,7 +18,7 @@ export default function OpenBrowserPage() {
         <h1 className="mb-4 text-2xl font-bold tracking-tight">Open Kamal Seller</h1>
         <OpenInBrowserNotice requestBrowser />
         <noscript>
-          <p className="mt-4">Copy https://kamalseller.com into Chrome or Safari to continue.</p>
+          <p className="mt-4">Copy {BUSINESS.siteUrl} into Chrome or Safari to continue.</p>
         </noscript>
       </main>
       <Footer />

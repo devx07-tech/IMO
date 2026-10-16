@@ -21,7 +21,7 @@ function formatTimestamp(iso: string): string {
 }
 
 function adminUrl(path: string): string {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? BUSINESS.siteUrl;
+  const siteUrl = BUSINESS.siteUrl;
   return `${siteUrl.replace(/\/$/, "")}${path}`;
 }
 
@@ -83,8 +83,19 @@ function buildMessage(
 }
 
 /**
- * Records and sends one admin notification. Never throws — a Telegram/WhatsApp
- * failure must never roll back or block the order/payment flow.
+ * TELEGRAM_CHAT_ID may list several chats, comma-separated (e.g. the owner and
+ * the developer), so everyone who needs to act on a payment hears about it.
+ */
+export function telegramRecipients(): string[] {
+  return (process.env.TELEGRAM_CHAT_ID ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Records and sends one admin notification per recipient. Never throws — a
+ * Telegram/WhatsApp failure must never roll back or block the order/payment flow.
  */
 async function deliver(params: {
   channel: NotificationChannel;
@@ -92,8 +103,24 @@ async function deliver(params: {
   orderId: string | null;
   message: (createdAt: string) => string;
 }): Promise<void> {
+  const recipients = params.channel === "telegram" ? telegramRecipients() : [];
+  if (recipients.length === 0) {
+    await deliverTo(params, undefined);
+    return;
+  }
+  await Promise.all(recipients.map((recipient) => deliverTo(params, recipient)));
+}
+
+async function deliverTo(
+  params: {
+    channel: NotificationChannel;
+    event: NotificationEvent;
+    orderId: string | null;
+    message: (createdAt: string) => string;
+  },
+  recipient: string | undefined
+): Promise<void> {
   const { channel, event, orderId } = params;
-  const recipient = channel === "telegram" ? process.env.TELEGRAM_CHAT_ID : undefined;
 
   const { data: notification, error: insertError } = await supabaseAdmin
     .from("notifications")
@@ -212,8 +239,12 @@ export async function retryNotification(notificationId: string): Promise<{ ok: b
     message = buildMessage(notification.event as NotificationEvent, order, notification.created_at);
   }
 
-  const recipient =
-    notification.channel === "telegram" ? process.env.TELEGRAM_CHAT_ID : undefined;
+  // Retry to the chat this row was for; rows from before a chat was configured
+  // go to the first configured chat.
+  const configured = notification.channel === "telegram" ? telegramRecipients() : [];
+  const recipient = configured.includes(notification.recipient)
+    ? notification.recipient
+    : configured[0];
 
   if (!recipient) {
     await supabaseAdmin

@@ -54,8 +54,30 @@ reach the browser.
 | `RAZORPAY_KEY_ID`           | Razorpay key id (`rzp_test_…` or `rzp_live_…`); public |
 | `RAZORPAY_KEY_SECRET`       | Server-only Razorpay key secret |
 | `RAZORPAY_WEBHOOK_SECRET`   | Secret you choose when creating the Razorpay webhook |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Admin order alerts                   |
-| `NEXT_PUBLIC_SITE_URL`      | Canonical URL, used for metadata and links in alerts |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Admin order alerts. `TELEGRAM_CHAT_ID` takes several chat IDs, comma-separated (e.g. Kamal and the developer); each chat must have sent `/start` to the bot first |
+
+## Production domain
+
+The primary domain is **https://kamalseller.shop**, set in `BUSINESS.siteUrl`
+(`src/lib/business.ts`). It is used for metadata, the sitemap, gateway return links,
+webhook URLs shown in Admin → Payments and links in Telegram alerts. It is not read
+from an environment variable, so a stale Vercel variable can't point them at an old
+domain. For the production switch:
+
+1. Connect `kamalseller.shop` to the existing Vercel project and configure the DNS
+   records shown by that project's domain settings. Make `kamalseller.shop` the
+   primary domain and have `www.kamalseller.shop` redirect to it, not the other way
+   round: payment webhooks are POSTs and a gateway may not follow a redirect.
+2. Redeploy this version.
+3. Update the active payment gateway's webhook URL to the new domain, plus its
+   allowed website details where required. If direct UPI is used, update the
+   payment phone's MacroDroid endpoint too. Exact URLs are listed below.
+4. Verify `/`, `/open`, `/sitemap.xml`, `/robots.txt`, admin login, and the payment
+   return and confirmation flow on the new domain before sharing it with customers.
+
+Missed gateway callbacks are caught anyway: opening the admin dashboard, orders or
+payments re-checks pending gateway orders from the last 24 hours with the gateway
+(at most once a minute), and confirms and alerts any that were paid.
 
 ## Payments
 
@@ -66,7 +88,7 @@ Orders already open keep the checkout they were created with.
 
 1. **Checkout.** `POST /api/orders` saves the order (exact package price) and creates a
    gateway order with the same Order ID, a 30-minute payment window and
-   `redirect_url = https://kamalseller.com/?order=<Order ID>`. The browser goes to the
+   `redirect_url = https://kamalseller.shop/?order=<Order ID>`. The browser goes to the
    gateway's payment page; its link is kept in `provider_order_id` so "Pay now" reopens it.
    The gateway requires a mobile number: the customer's WhatsApp number if given, otherwise
    `BUSINESS.phone`.
@@ -81,7 +103,7 @@ Setup:
 
 1. Gateway dashboard → **Developers**: copy the API token into `DGHOST_USER_TOKEN` in Vercel
    (and `.env.local`). Don't commit it.
-2. Set **Webhook URL** to `https://kamalseller.com/api/webhooks/dghost`.
+2. Set **Webhook URL** to `https://kamalseller.shop/api/webhooks/dghost`.
 3. Redeploy, check **Admin → Payments**, then pay a small live order and check it turns Paid
    with a Telegram alert.
 
@@ -125,7 +147,7 @@ Use Kamal's phone (it receives the ICICI SMS) or a phone with the same SIM, kept
    `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`).
 2. Install **Paytm for Business**, sign in, and turn on payment notifications.
 3. Install **MacroDroid** and create three macros, each with the action *HTTP Request* →
-   `POST https://kamalseller.com/api/payments/upi-notify`, header
+   `POST https://kamalseller.shop/api/payments/upi-notify`, header
    `Authorization` = `Bearer <UPI_BRIDGE_SECRET>`, content type `text/plain`:
    - Trigger *Notification Received* → app **Paytm for Business**; body `[not_title] - [notification]`
    - Trigger *SMS Received* → from senders containing **ICICI** and text containing
@@ -159,7 +181,7 @@ button, menu instructions, and a copyable link.
 
 ### Sharing a browser-opening link in IMO
 
-After deploying, share **https://kamalseller.com/open**. This lightweight page tries
+After deploying, share **https://kamalseller.shop/open**. This lightweight page tries
 to open the recharge homepage in Chrome on Android or Safari on iPhone, even when
 the host app hides its identity. It preserves query parameters and the URL fragment
 (for example `/open?history=123456789#transaction-history`). It does not need the
@@ -180,13 +202,13 @@ iPhone devices inside IMO before sending it to customers.
    `.env.local` for local testing). The keys must belong to Kamal's own Razorpay account.
    Never put the key secret in client code or chat.
 3. Razorpay Dashboard → **Webhooks → Add new webhook**:
-   - URL: `https://kamalseller.com/api/webhooks/razorpay`
+   - URL: `https://kamalseller.shop/api/webhooks/razorpay`
    - Secret: a long random string; set the same value as `RAZORPAY_WEBHOOK_SECRET`
      (`node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`)
    - Events: `payment.captured` and `order.paid`
 4. Keep **automatic capture** on (Settings → Payment Capture). If it is off, the site
    captures authorized payments itself.
-5. Add kamalseller.com under Razorpay's website / app details so live payments are allowed
+5. Add kamalseller.shop under Razorpay's website / app details so live payments are allowed
    from this domain. Each other website using the same Razorpay account must be added too;
    their webhooks for unknown orders are acknowledged and ignored here.
 6. Redeploy, open **Admin → Payments** and check that keys, mode and webhook show as

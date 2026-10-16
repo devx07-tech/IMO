@@ -1,8 +1,8 @@
 export const BUSINESS = {
   name: "Kamal Seller",
   brand: "IMO Recharge",
-  domain: "kamalseller.com",
-  siteUrl: "https://kamalseller.com",
+  domain: "kamalseller.shop",
+  siteUrl: "https://kamalseller.shop",
   upi: {
     payeeName: "Kamal Srinivasan",
     // Paytm for Business merchant ID: accepts scanned QR codes and the Paytm app.

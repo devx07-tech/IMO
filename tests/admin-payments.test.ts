@@ -39,12 +39,11 @@ describe("admin payment access and configuration", () => {
     vi.stubEnv("RAZORPAY_KEY_SECRET", "private-key-secret-do-not-return");
     vi.stubEnv("RAZORPAY_WEBHOOK_SECRET", "private-webhook-secret-do-not-return");
     vi.stubEnv("DGHOST_USER_TOKEN", "private-gateway-token-do-not-return");
-    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://kamalseller.com");
     const response = await payments();
     const body = await response.json();
     expect(body.mode).toBe("dghost");
-    expect(body.gateway).toEqual({ tokenConfigured: true, webhookUrl: "https://kamalseller.com/api/webhooks/dghost" });
-    expect(body.upi).toMatchObject({ merchantId: "paytm.s2sovgg@pty", personalId: "kamal6382371168@okicici", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.com/api/payments/upi-notify" });
+    expect(body.gateway).toEqual({ tokenConfigured: true, webhookUrl: "https://kamalseller.shop/api/webhooks/dghost" });
+    expect(body.upi).toMatchObject({ merchantId: "paytm.s2sovgg@pty", personalId: "kamal6382371168@okicici", bridgeSecretConfigured: true, bridgeUrl: "https://kamalseller.shop/api/payments/upi-notify" });
     expect(body.razorpay).toMatchObject({ keysConfigured: true, keyMode: "live", webhookSecretConfigured: true });
     expect(JSON.stringify(body)).not.toContain("private-");
   });
@@ -69,18 +68,18 @@ describe("admin order and revenue correlation", () => {
     expect(mocks.query.range).toHaveBeenCalledWith(500, 999);
   });
   it.each(["waiting_recharge", "processing", "completed", "failed_recharge"])("restricts %s to confirmed paid orders", async (filter) => {
-    const res = await listOrders(new NextRequest(`https://kamalseller.com/api/admin/orders?filter=${filter}&offset=50&limit=50`));
+    const res = await listOrders(new NextRequest(`https://kamalseller.shop/api/admin/orders?filter=${filter}&offset=50&limit=50`));
     expect(res.status).toBe(200);
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "paid");
     expect(mocks.query.range).toHaveBeenCalledWith(50, 99);
   });
   it("keeps pending payment searches outside the recharge queue", async () => {
-    await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?filter=pending_payment"));
+    await listOrders(new NextRequest("https://kamalseller.shop/api/admin/orders?filter=pending_payment"));
     expect(mocks.query.eq).toHaveBeenCalledWith("payment_status", "pending");
     expect(mocks.query.eq).not.toHaveBeenCalledWith("payment_status", "paid");
   });
   it("finds orders by the customer's WhatsApp number", async () => {
-    await listOrders(new NextRequest("https://kamalseller.com/api/admin/orders?search=9876543210"));
+    await listOrders(new NextRequest("https://kamalseller.shop/api/admin/orders?search=9876543210"));
     expect(mocks.query.or).toHaveBeenCalledWith(expect.stringContaining("customer_phone.eq.9876543210"));
   });
   it("counts payments on the confirmation day in India time", async () => {
@@ -93,7 +92,7 @@ describe("admin order and revenue correlation", () => {
 
 describe("recharge payment guard", () => {
   const context = { params: Promise.resolve({ id: "row-1" }) };
-  const request = () => new NextRequest("https://kamalseller.com/api/admin/orders/row-1/recharge", {
+  const request = () => new NextRequest("https://kamalseller.shop/api/admin/orders/row-1/recharge", {
     method: "POST", body: JSON.stringify({ action: "start" }), headers: { "Content-Type": "application/json" },
   });
   it("blocks recharge of an unconfirmed order", async () => {

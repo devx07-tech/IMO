@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
 
   if (mode === GATEWAY_PROVIDER) {
     const diamonds = (pkg.credits * quantity).toLocaleString("en-IN");
-    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? BUSINESS.siteUrl).replace(/\/$/, "");
+    const siteUrl = BUSINESS.siteUrl;
     try {
       const paymentUrl = await createGatewayOrder({
         orderNumber: base.order_number,

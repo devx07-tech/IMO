@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { PaymentStatus, RechargeStatus } from "@/lib/db-types";
 import { requireAdmin } from "@/lib/auth/current-admin";
+import { syncPendingGatewayOrders } from "@/lib/payments";
 import { parseIntParam, sanitizeSearch } from "@/lib/validation";
 
 type OrderFilter =
@@ -24,6 +25,8 @@ const SEARCH_UTR_RE = /^\d{12}$/;
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin();
   if (auth.response) return auth.response;
+  // Picks up gateway payments whose callback never reached us.
+  await syncPendingGatewayOrders().catch((err) => console.error("Pending gateway sweep failed", err));
   const { searchParams } = request.nextUrl;
   const filter = searchParams.get("filter") ?? "all";
   const search = sanitizeSearch(searchParams.get("search"));

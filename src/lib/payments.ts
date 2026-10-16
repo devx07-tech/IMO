@@ -11,7 +11,8 @@ import {
   paymentReference,
   type RazorpayPayment,
 } from "./razorpay";
-import { fetchGatewayStatus, type GatewayStatus } from "./dghost";
+import { fetchGatewayStatus, gatewayConfigured, type GatewayStatus } from "./dghost";
+import { rateLimit } from "./rate-limit";
 
 const UNIQUE_VIOLATION = "23505";
 
@@ -192,4 +193,30 @@ export async function syncOrderWithGateway(order: OrderRow, source: GatewayConfi
     console.error("Gateway payment mismatch", { orderNumber: order.order_number, reason: result.reason, utr: status.utr });
   }
   return result.status === "paid" ? result.order : order;
+}
+
+/**
+ * Safety net for missed gateway callbacks: if the webhook never arrives and the
+ * customer doesn't come back to the site, an order would stay pending forever
+ * (no Telegram alert, never in the recharge queue). Admin views call this to
+ * re-ask the gateway about recent pending orders. Throttled to once a minute.
+ */
+export async function syncPendingGatewayOrders(): Promise<number> {
+  if (!gatewayConfigured()) return 0;
+  const throttle = await rateLimit("gateway-sweep", 1, 60_000);
+  if (!throttle.ok) return 0;
+
+  const { data: pending, error } = await supabaseAdmin
+    .from("orders")
+    .select("*")
+    .eq("payment_provider", GATEWAY_PROVIDER)
+    .eq("payment_status", "pending")
+    .not("provider_order_id", "is", null)
+    .gte("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(25);
+  if (error || !pending) return 0;
+
+  const results = await Promise.allSettled(pending.map((order) => syncOrderWithGateway(order, "status_check")));
+  return results.filter((r) => r.status === "fulfilled" && r.value.payment_status === "paid").length;
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdmin } from "@/lib/auth/current-admin";
 import { readPaidRevenue } from "@/lib/payment-summary";
+import { syncPendingGatewayOrders } from "@/lib/payments";
 
 function todayBoundsIST(): { start: string; end: string } {
   const dateStr = new Intl.DateTimeFormat("en-CA", {
@@ -16,6 +17,8 @@ function todayBoundsIST(): { start: string; end: string } {
 export async function GET() {
   const auth = await requireAdmin();
   if (auth.response) return auth.response;
+  // Picks up gateway payments whose callback never reached us.
+  await syncPendingGatewayOrders().catch((err) => console.error("Pending gateway sweep failed", err));
   const { start, end } = todayBoundsIST();
 
   const [

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import { BUSINESS } from "@/lib/business";
 import { OPEN_IN_BROWSER_SCRIPT } from "@/lib/open-in-browser";
 import "./globals.css";
 
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(BUSINESS.siteUrl),
   title: "IMO Recharge — Powered by Kamal",
   description:
     "Recharge your IMO account quickly and securely. Enter your IMO ID, pick a package, and pay securely by UPI.",
